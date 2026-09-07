@@ -6,7 +6,7 @@ module;
 #endif
 
 export module waywallen:daemon_dbus;
-export import qextra;
+import qextra;
 
 export namespace waywallen
 {

@@ -7,7 +7,7 @@ module;
 
 export module waywallen:model.remote;
 export import :model.share_store;
-export import qextra;
+import qextra;
 
 export namespace waywallen::model
 {

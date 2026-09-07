@@ -5,6 +5,7 @@ module;
 #include <rstd/macro.hpp>
 
 module waywallen;
+import qextra;
 import :query.plugin;
 import :app;
 

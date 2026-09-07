@@ -2,6 +2,7 @@ module;
 #include "waywallen/query/autostart_query.moc.h"
 
 module waywallen;
+import qextra;
 import :query.autostart;
 import :app;
 

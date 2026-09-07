@@ -2,6 +2,7 @@ module;
 #include "waywallen/model/store_item.moc.h"
 
 module waywallen;
+import qextra;
 import :model.store_item;
 import :msg.store;
 

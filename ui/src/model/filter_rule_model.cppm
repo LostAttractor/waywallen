@@ -7,7 +7,7 @@ module;
 
 export module waywallen:model.filter_rule;
 export import :proto;
-export import qextra;
+import qextra;
 import rstd.cppstd;
 
 export namespace waywallen

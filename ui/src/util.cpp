@@ -2,6 +2,7 @@ module;
 #include "waywallen/util.moc.h"
 
 module waywallen;
+import qextra;
 import :util;
 import :app;
 

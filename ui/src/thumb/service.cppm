@@ -10,7 +10,7 @@ module;
 #endif
 
 export module waywallen:thumb.service;
-export import qextra;
+import qextra;
 
 namespace waywallen
 {

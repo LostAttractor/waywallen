@@ -2,6 +2,7 @@ module;
 #include "waywallen/model/wallpaper_select_storage.moc.h"
 
 module waywallen;
+import qextra;
 import :model.wallpaper_select_storage;
 
 namespace waywallen::model

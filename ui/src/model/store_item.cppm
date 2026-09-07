@@ -8,7 +8,7 @@ module;
 
 export module waywallen:model.store_item;
 export import :msg.store;
-export import qextra;
+import qextra;
 import rstd;
 import rstd.cppstd;
 

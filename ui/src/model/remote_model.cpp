@@ -3,6 +3,7 @@ module;
 #include <cstddef>
 
 module waywallen;
+import qextra;
 import :model.remote;
 
 namespace waywallen::model

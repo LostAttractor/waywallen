@@ -17,4 +17,3 @@ sources = ["tests/po.cpp"]
 
 [dependencies.rstd-std]
 workspace = true
-visibility = "private"

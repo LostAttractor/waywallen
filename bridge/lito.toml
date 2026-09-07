@@ -36,4 +36,3 @@ sources = ["tests/protocol_v3_tests.c"]
 
 [external-dependencies.pkg-config.gbm]
 workspace = true
-visibility = "private"

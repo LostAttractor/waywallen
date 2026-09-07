@@ -1,7 +1,7 @@
 module;
 
 export module waywallen:model.share_store;
-export import qextra;
+import qextra;
 import rstd.cppstd;
 
 export namespace waywallen

@@ -6,7 +6,7 @@ module;
 #endif
 
 export module waywallen:model.user_property;
-export import qextra;
+import qextra;
 import rstd.cppstd;
 
 export namespace waywallen::model

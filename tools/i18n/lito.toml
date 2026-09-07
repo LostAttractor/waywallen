@@ -23,20 +23,15 @@ sources = [
 
 [dependencies.luato]
 workspace = true
-visibility = "private"
 
 [dependencies.waywallen-plugin-i18n]
 path = "po"
-visibility = "private"
 
 [dependencies.rstd-std]
 workspace = true
-visibility = "private"
 
 [dependencies.rstd-argparse]
 workspace = true
-visibility = "private"
 
 [dependencies.rstd-toml]
 workspace = true
-visibility = "private"

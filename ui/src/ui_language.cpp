@@ -2,6 +2,7 @@ module;
 #include <QtCore/QDebug>
 
 module waywallen;
+import qextra;
 import :ui_language;
 
 using namespace Qt::Literals::StringLiterals;

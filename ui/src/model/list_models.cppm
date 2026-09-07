@@ -7,7 +7,7 @@ module;
 
 export module waywallen:model.list_models;
 export import :msg.backend_msg;
-export import qextra;
+import qextra;
 import rstd.cppstd;
 
 export namespace waywallen::model

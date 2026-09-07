@@ -1,3 +1,3 @@
 export module waywallen:query.query;
-export import qextra;
+import qextra;
 export import :proto;

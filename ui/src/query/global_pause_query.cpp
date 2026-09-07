@@ -2,6 +2,7 @@ module;
 #include "waywallen/query/global_pause_query.moc.h"
 
 module waywallen;
+import qextra;
 import :query.global_pause;
 import :app;
 

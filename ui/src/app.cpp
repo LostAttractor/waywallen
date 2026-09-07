@@ -4,6 +4,7 @@ module;
 #include <rstd/macro.hpp>
 
 module waywallen;
+import qextra;
 import :app;
 import :display;
 import :gpu;

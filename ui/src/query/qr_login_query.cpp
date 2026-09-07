@@ -2,6 +2,7 @@ module;
 #include "waywallen/query/qr_login_query.moc.h"
 
 module waywallen;
+import qextra;
 import :query.qr_login;
 import :app;
 

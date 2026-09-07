@@ -3,6 +3,7 @@ module;
 #include "waywallen/query/progress_query.moc.h"
 
 module waywallen;
+import qextra;
 import :query.progress;
 import :app;
 

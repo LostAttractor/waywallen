@@ -28,22 +28,22 @@ path = "bridge"
 path = "plugins"
 
 [workspace.dependencies.rstd-cppstd]
-git = "https://github.com/litocpp/rstd.git"
+version = "0.1.0"
 
 [workspace.dependencies.rstd-std]
-git = "https://github.com/litocpp/rstd.git"
+version = "0.1.0"
 
 [workspace.dependencies.rstd-json]
-git = "https://github.com/litocpp/rstd.git"
+version = "0.1.0"
 
 [workspace.dependencies.rstd-argparse]
-git = "https://github.com/litocpp/rstd.git"
+version = "0.1.0"
 
 [workspace.dependencies.rstd-log]
-git = "https://github.com/litocpp/rstd.git"
+version = "0.1.0"
 
 [workspace.dependencies.rstd-toml]
-git = "https://github.com/litocpp/rstd.git"
+version = "0.1.0"
 
 [workspace.dependencies.luato]
 git = "https://github.com/litocpp/luato.git"

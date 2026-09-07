@@ -2,6 +2,7 @@ module;
 #include "waywallen/msg/store.moc.h"
 
 module waywallen;
+import qextra;
 import :msg.store;
 
 namespace waywallen

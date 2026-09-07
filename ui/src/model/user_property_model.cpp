@@ -2,6 +2,7 @@ module;
 #include "waywallen/model/user_property_model.moc.h"
 
 module waywallen;
+import qextra;
 import :model.user_property;
 import :plugin_translation;
 

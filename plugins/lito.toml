@@ -10,16 +10,14 @@ sources = ["Bridge.cppm"]
 
 [dependencies.waywallen-bridge]
 workspace = true
-visibility = "public"
+pub = true
 
 [dependencies.vvk]
 workspace = true
-visibility = "public"
+pub = true
 
 [dependencies.rstd-cppstd]
 workspace = true
-visibility = "private"
 
 [dependencies.rstd-log]
 workspace = true
-visibility = "private"

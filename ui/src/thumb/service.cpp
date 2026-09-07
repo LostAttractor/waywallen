@@ -5,6 +5,7 @@ module;
 #include <utility>
 
 module waywallen;
+import qextra;
 
 import :thumb.service;
 import rstd.cppstd;

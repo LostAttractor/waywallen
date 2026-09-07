@@ -11,7 +11,7 @@ export import :display;
 export import :gpu;
 export import :renderer;
 export import :library;
-export import qextra;
+import qextra;
 
 class AppPrivate;
 

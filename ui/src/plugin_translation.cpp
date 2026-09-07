@@ -2,6 +2,7 @@ module;
 #include "waywallen/plugin_translation.moc.h"
 
 module waywallen;
+import qextra;
 import :plugin_translation;
 import :app;
 import :backend;

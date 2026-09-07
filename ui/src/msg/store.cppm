@@ -8,7 +8,7 @@ module;
 export module waywallen:msg.store;
 export import :msg.backend_msg;
 export import :model.remote;
-export import qextra;
+import qextra;
 
 namespace waywallen
 {

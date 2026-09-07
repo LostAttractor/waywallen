@@ -2,6 +2,7 @@ module;
 #include "waywallen/model/list_models.moc.h"
 
 module waywallen;
+import qextra;
 import :model.list_models;
 
 namespace waywallen::model

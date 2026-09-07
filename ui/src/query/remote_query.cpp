@@ -4,6 +4,7 @@ module;
 #include <rstd/macro.hpp>
 
 module waywallen;
+import qextra;
 import :query.remote;
 import :app;
 import :msg.store;

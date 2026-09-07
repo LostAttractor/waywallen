@@ -2,6 +2,7 @@ module;
 #include "waywallen/query/plugin_action_query.moc.h"
 
 module waywallen;
+import qextra;
 import :query.plugin_action;
 import :app;
 

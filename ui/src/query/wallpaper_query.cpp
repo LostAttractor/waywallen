@@ -5,6 +5,7 @@ module;
 #include <rstd/macro.hpp>
 
 module waywallen;
+import qextra;
 import :query.wallpaper;
 import :app;
 import :msg.store;

@@ -2,6 +2,7 @@ module;
 #include "waywallen/query/log_query.moc.h"
 
 module waywallen;
+import qextra;
 import :query.log;
 import :app;
 

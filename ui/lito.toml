@@ -115,28 +115,22 @@ workspace = true
 
 [dependencies.rstd-std]
 workspace = true
-visibility = "private"
 
 [dependencies.rstd-cppstd]
 workspace = true
-visibility = "private"
 
 [dependencies.waywallen-plugin-i18n]
 path = "../tools/i18n/po"
-visibility = "private"
 
 [dependencies.ncrequest]
 workspace = true
-visibility = "private"
 features = ["qt"]
 
 [dependencies.qextra]
 workspace = true
-visibility = "public"
 
 [dependencies.wavsen]
 workspace = true
-visibility = "private"
 
 [external-sources.waywallen-control]
 workspace = true
@@ -144,21 +138,21 @@ workspace = true
 [external-dependencies.cmake.qt6]
 workspace = true
 targets = [
-  { name = "Qt6::Core", visibility = "private" },
-  { name = "Qt6::DBus", visibility = "private" },
-  { name = "Qt6::Protobuf", visibility = "private" },
-  { name = "Qt6::ProtobufQuick", visibility = "private" },
-  { name = "Qt6::ProtobufWellKnownTypes", visibility = "private" },
-  { name = "Qt6::Quick", visibility = "private" },
-  { name = "Qt6::QuickControls2", visibility = "private" },
-  { name = "Qt6::QuickPrivate", visibility = "private" },
-  { name = "Qt6::WebSockets", visibility = "private" },
+  { name = "Qt6::Core" },
+  { name = "Qt6::DBus" },
+  { name = "Qt6::Protobuf" },
+  { name = "Qt6::ProtobufQuick" },
+  { name = "Qt6::ProtobufWellKnownTypes" },
+  { name = "Qt6::Quick" },
+  { name = "Qt6::QuickControls2" },
+  { name = "Qt6::QuickPrivate" },
+  { name = "Qt6::WebSockets" },
 ]
 
 [external-dependencies.cmake.qml-material]
 workspace = true
 targets = [
-  { name = "qml_material::waywallen", visibility = "private" },
+  { name = "qml_material::waywallen" },
 ]
 
 [external-dependencies.cargo.waywallen-daemon]

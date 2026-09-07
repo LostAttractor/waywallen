@@ -7,7 +7,7 @@ module;
 
 export module waywallen:model.wallpaper_select_storage;
 export import :msg.backend_msg;
-export import qextra;
+import qextra;
 
 namespace waywallen::model
 {

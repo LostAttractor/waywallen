@@ -5,6 +5,7 @@ module;
 #include <algorithm>
 
 module waywallen;
+import qextra;
 import :query.display;
 import :app;
 import :display;

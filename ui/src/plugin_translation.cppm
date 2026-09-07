@@ -6,7 +6,7 @@ module;
 #endif
 
 export module waywallen:plugin_translation;
-export import qextra;
+import qextra;
 import rstd.cppstd;
 
 export namespace waywallen

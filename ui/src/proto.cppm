@@ -2,7 +2,7 @@ module;
 #include "control.qpb.h"
 
 export module waywallen:proto;
-export import qextra;
+import qextra;
 
 namespace proto = waywallen::control::v1;
 

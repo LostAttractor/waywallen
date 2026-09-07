@@ -6,6 +6,7 @@ Q_IMPORT_QML_PLUGIN(waywallen_uiPlugin)
 Q_IMPORT_QML_PLUGIN(waywallen_controlPlugin)
 
 module waywallen.entry;
+import qextra;
 
 import ncrequest;
 import rstd.cppstd;

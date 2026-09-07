@@ -6,7 +6,7 @@ module;
 #endif
 
 export module waywallen:util;
-export import qextra;
+import qextra;
 
 namespace waywallen
 {

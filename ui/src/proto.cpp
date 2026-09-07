@@ -1,4 +1,5 @@
 module waywallen;
+import qextra;
 import :proto;
 
 using namespace Qt::Literals::StringLiterals;
