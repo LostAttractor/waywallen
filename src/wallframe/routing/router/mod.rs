@@ -149,8 +149,18 @@ impl DisplayConsumptionPermit {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AutoStateAction {
     Reconcile,
+    ScheduleResume {
+        display_id: DisplayId,
+        token: u64,
+        delay: Duration,
+    },
+    CancelResume {
+        display_id: DisplayId,
+        reconcile: bool,
+    },
     Noop,
 }
 
@@ -1860,6 +1870,8 @@ impl Router {
             self.deadlines
                 .cancel(deadline::DeadlineKey::renderer_start(&renderer_id));
         }
+        self.deadlines
+            .cancel(deadline::DeadlineKey::auto_replay_resume(display_id));
         // Any renderer that just lost its last link enters the 5s
         // grace window; no new renderer is protected during unplug.
         self.mark_orphans(None).await;
@@ -2131,16 +2143,9 @@ impl Router {
             let inner = self.inner.lock().await;
             inner.displays.keys().copied().collect()
         };
-        let mut reconcile = false;
         for display_id in display_ids {
-            reconcile |= matches!(
-                self.update_auto_state(display_id, None).await,
-                AutoStateAction::Reconcile
-            );
-        }
-        if reconcile {
-            self.apply_auto_stop_links().await;
-            self.reconcile_lifecycle().await;
+            let action = self.update_auto_state(display_id, None).await;
+            self.run_auto_state_action(action).await;
         }
     }
 
@@ -6196,6 +6201,7 @@ mod tests {
 
     fn auto_replay(actions: &[(AutoCondition, AutoAction)]) -> AutoReplayPolicy {
         let mut policy = AutoReplayPolicy::default();
+        policy.resume_delay_ms = 0;
         for (condition, action) in actions {
             policy.set_action(*condition, *action);
         }
@@ -7215,16 +7221,12 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn auto_replay_resume_is_immediate() {
+    async fn auto_replay_resume_waits_for_configured_delay() {
         let mgr = Arc::new(RendererManager::new_default());
         let router = Router::new(mgr.clone());
-        router.attach_settings(
-            settings_with_auto_replay(auto_replay(&[(
-                AutoCondition::Fullscreen,
-                AutoAction::Pause,
-            )]))
-            .await,
-        );
+        let mut policy = auto_replay(&[(AutoCondition::Fullscreen, AutoAction::Pause)]);
+        policy.resume_delay_ms = 250;
+        router.attach_settings(settings_with_auto_replay(policy).await);
         let (r, _peer) = RendererHandle::test_stub_with_peer("r1", "scene");
         mgr.register_test_handle(r.clone()).await;
         router.register_renderer(r.clone()).await;
@@ -7236,10 +7238,66 @@ mod tests {
             .await;
         assert!(router.is_paused("r1").await);
 
-        // Flag drops -> state machine resumes immediately.
+        // Clearing the condition keeps the renderer paused until the
+        // compositor animation grace period expires.
         router
             .update_display_window_state(h.id, ar::FLAG_NON_MINIMIZED)
             .await;
+        assert!(router.is_paused("r1").await);
+
+        tokio::time::advance(Duration::from_millis(249)).await;
+        tokio::task::yield_now().await;
+        assert!(router.is_paused("r1").await);
+
+        tokio::time::advance(Duration::from_millis(1)).await;
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+            if !router.is_paused("r1").await {
+                return;
+            }
+        }
+        panic!("renderer did not resume after the configured delay");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn auto_replay_resume_is_cancelled_when_condition_returns() {
+        let mgr = Arc::new(RendererManager::new_default());
+        let router = Router::new(mgr.clone());
+        let mut policy = auto_replay(&[(AutoCondition::Fullscreen, AutoAction::Pause)]);
+        policy.resume_delay_ms = 250;
+        router.attach_settings(settings_with_auto_replay(policy).await);
+        let (r, _peer) = RendererHandle::test_stub_with_peer("r1", "scene");
+        mgr.register_test_handle(r.clone()).await;
+        router.register_renderer(r.clone()).await;
+        let h = router.register_display(reg("HDMI-A-1", 1920, 1080)).await;
+
+        router
+            .update_display_window_state(h.id, ar::FLAG_NON_MINIMIZED | ar::FLAG_FULLSCREEN)
+            .await;
+        router
+            .update_display_window_state(h.id, ar::FLAG_NON_MINIMIZED)
+            .await;
+        tokio::time::advance(Duration::from_millis(100)).await;
+        router
+            .update_display_window_state(h.id, ar::FLAG_NON_MINIMIZED | ar::FLAG_FULLSCREEN)
+            .await;
+
+        tokio::time::advance(Duration::from_millis(250)).await;
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert!(router.is_paused("r1").await);
+
+        router
+            .update_display_window_state(h.id, ar::FLAG_NON_MINIMIZED)
+            .await;
+        tokio::time::advance(Duration::from_millis(250)).await;
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+            if !router.is_paused("r1").await {
+                return;
+            }
+        }
         assert!(!router.is_paused("r1").await);
     }
 

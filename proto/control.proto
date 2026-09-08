@@ -1591,6 +1591,7 @@ message AutoReplayPolicy {
   AutoAction fullscreen = 13;
   AutoAction session_locked = 14;
   AutoAction session_inactive = 15;
+  optional uint32 resume_delay_ms = 16;
 }
 
 enum PauseEffectKind {

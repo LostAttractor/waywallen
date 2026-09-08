@@ -4,24 +4,21 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 
 use crate::wallframe::renderer_manager::RendererId;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) enum DeadlineKind {
-    RendererStart,
-}
+use crate::wallframe::scheduler::DisplayId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(super) struct DeadlineKey {
-    pub owner: RendererId,
-    pub kind: DeadlineKind,
+pub(super) enum DeadlineKey {
+    RendererStart(RendererId),
+    AutoReplayResume(DisplayId),
 }
 
 impl DeadlineKey {
     pub fn renderer_start(renderer_id: &str) -> Self {
-        Self {
-            owner: renderer_id.to_owned(),
-            kind: DeadlineKind::RendererStart,
-        }
+        Self::RendererStart(renderer_id.to_owned())
+    }
+
+    pub fn auto_replay_resume(display_id: DisplayId) -> Self {
+        Self::AutoReplayResume(display_id)
     }
 }
 

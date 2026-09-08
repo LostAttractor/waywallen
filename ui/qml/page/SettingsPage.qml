@@ -247,7 +247,8 @@ MD.Page {
             maximized: WC.AutoAction.AUTO_ACTION_NONE,
             fullscreen: WC.AutoAction.AUTO_ACTION_PAUSE,
             sessionLocked: WC.AutoAction.AUTO_ACTION_STOP,
-            sessionInactive: WC.AutoAction.AUTO_ACTION_STOP
+            sessionInactive: WC.AutoAction.AUTO_ACTION_STOP,
+            resumeDelayMs: 250
         };
     }
 
@@ -539,7 +540,7 @@ MD.Page {
                     required property var modelData
 
                     first: autoReplayItem.index === 0
-                    last: autoReplayItem.index === root.kAutoReplayRows.length - 1
+                    last: false
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -566,6 +567,47 @@ MD.Page {
                                 root.kAutoActions,
                                 root._autoReplay()[autoReplayItem.modelData.key] ?? 0)
                         }
+                    }
+                }
+            }
+
+            SettingItem {
+                first: false
+                last: true
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    FieldLabel {
+                        Layout.fillWidth: true
+                        text: qsTr("Resume delay")
+                    }
+
+                    W.ValueSlider {
+                        id: m_auto_replay_resume_delay
+                        Layout.preferredWidth: 220
+                        from: 0
+                        to: 2000
+                        stepSize: 50
+                        snapMode: T.Slider.SnapAlways
+                        maxVisibleStops: 10
+                        valueText: Math.round(value).toString()
+                        valueMaxText: "2000"
+                        onMoved: root._mutAutoReplay(policy => {
+                            policy.resumeDelayMs = Math.round(value);
+                        })
+                    }
+                    Binding {
+                        target: m_auto_replay_resume_delay
+                        property: "value"
+                        value: Number(root._autoReplay().resumeDelayMs ?? 250)
+                    }
+
+                    MD.Text {
+                        text: qsTr("ms")
+                        typescale: MD.Token.typescale.body_medium
+                        color: MD.Token.color.on_surface_variant
                     }
                 }
             }

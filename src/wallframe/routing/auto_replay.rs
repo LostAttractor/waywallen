@@ -49,6 +49,8 @@ pub struct State {
     pub raw: Decision,
     pub requested: Decision,
     pub stop_applied: bool,
+    pub resume_token: u64,
+    pub pending_resume: Option<u64>,
 }
 
 impl State {

@@ -601,6 +601,7 @@ pub(super) fn auto_replay_to_pb(p: &crate::settings::AutoReplayPolicy) -> pb::Au
         fullscreen: auto_action_to_pb(p.fullscreen) as i32,
         session_locked: auto_action_to_pb(p.session_locked) as i32,
         session_inactive: auto_action_to_pb(p.session_inactive) as i32,
+        resume_delay_ms: Some(p.effective_resume_delay_ms()),
     }
 }
 
@@ -612,6 +613,10 @@ pub(super) fn auto_replay_from_pb(p: &pb::AutoReplayPolicy) -> crate::settings::
         fullscreen: auto_action_from_pb(p.fullscreen),
         session_locked: auto_action_from_pb(p.session_locked),
         session_inactive: auto_action_from_pb(p.session_inactive),
+        resume_delay_ms: p
+            .resume_delay_ms
+            .unwrap_or(crate::settings::DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS)
+            .min(crate::settings::MAX_AUTO_REPLAY_RESUME_DELAY_MS),
     }
 }
 

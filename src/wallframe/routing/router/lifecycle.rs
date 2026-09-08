@@ -387,15 +387,50 @@ impl Router {
         }
         state.auto_replay.raw = new_raw;
         if new_raw.is_active() {
-            if state.auto_replay.requested != new_raw {
+            let cancel_resume = state.auto_replay.pending_resume.take().is_some();
+            let reconcile = state.auto_replay.requested != new_raw;
+            if reconcile {
                 state.auto_replay.requested = new_raw;
+            }
+            if cancel_resume {
+                AutoStateAction::CancelResume {
+                    display_id,
+                    reconcile,
+                }
+            } else if reconcile {
                 AutoStateAction::Reconcile
             } else {
                 AutoStateAction::Noop
             }
         } else if state.auto_replay.requested.is_active() {
-            state.auto_replay.requested = new_raw;
-            AutoStateAction::Reconcile
+            let delay = Duration::from_millis(u64::from(policy.effective_resume_delay_ms()));
+            if delay.is_zero() {
+                let cancel_resume = state.auto_replay.pending_resume.take().is_some();
+                state.auto_replay.requested = new_raw;
+                if cancel_resume {
+                    AutoStateAction::CancelResume {
+                        display_id,
+                        reconcile: true,
+                    }
+                } else {
+                    AutoStateAction::Reconcile
+                }
+            } else if state.auto_replay.pending_resume.is_some() {
+                AutoStateAction::Noop
+            } else {
+                state.auto_replay.resume_token = state
+                    .auto_replay
+                    .resume_token
+                    .checked_add(1)
+                    .expect("auto replay resume token exhausted");
+                let token = state.auto_replay.resume_token;
+                state.auto_replay.pending_resume = Some(token);
+                AutoStateAction::ScheduleResume {
+                    display_id,
+                    token,
+                    delay,
+                }
+            }
         } else {
             state.auto_replay.requested = new_raw;
             AutoStateAction::Noop
@@ -409,6 +444,51 @@ impl Router {
                 self.apply_auto_stop_links().await;
                 self.reconcile_lifecycle().await;
             }
+            AutoStateAction::ScheduleResume {
+                display_id,
+                token,
+                delay,
+            } => {
+                self.deadlines.schedule(
+                    deadline::DeadlineKey::auto_replay_resume(display_id),
+                    token,
+                    tokio::time::Instant::now() + delay,
+                );
+            }
+            AutoStateAction::CancelResume {
+                display_id,
+                reconcile,
+            } => {
+                self.deadlines
+                    .cancel(deadline::DeadlineKey::auto_replay_resume(display_id));
+                if reconcile {
+                    self.apply_auto_stop_links().await;
+                    self.reconcile_lifecycle().await;
+                }
+            }
+        }
+    }
+
+    async fn finish_auto_replay_resume(self: &Arc<Self>, display_id: DisplayId, token: u64) {
+        let reconcile = {
+            let mut inner = self.inner.lock().await;
+            let Some(state) = inner.displays.get_mut(&display_id) else {
+                return;
+            };
+            if state.auto_replay.pending_resume != Some(token) {
+                return;
+            }
+            state.auto_replay.pending_resume = None;
+            if state.auto_replay.raw.is_active() || !state.auto_replay.requested.is_active() {
+                false
+            } else {
+                state.auto_replay.requested = state.auto_replay.raw;
+                true
+            }
+        };
+        if reconcile {
+            self.apply_auto_stop_links().await;
+            self.reconcile_lifecycle().await;
         }
     }
 
@@ -910,10 +990,12 @@ impl Router {
     }
 
     pub(super) async fn on_deadline_reached(self: &Arc<Self>, event: deadline::DeadlineReached) {
-        match event.key.kind {
-            deadline::DeadlineKind::RendererStart => {
-                let _ = self
-                    .advance_renderer_start(&event.key.owner, event.token)
+        match event.key {
+            deadline::DeadlineKey::RendererStart(renderer_id) => {
+                let _ = self.advance_renderer_start(&renderer_id, event.token).await;
+            }
+            deadline::DeadlineKey::AutoReplayResume(display_id) => {
+                self.finish_auto_replay_resume(display_id, event.token)
                     .await;
             }
         }

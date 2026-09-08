@@ -1861,6 +1861,11 @@ Related display: #%1</source>
         <translation>自动重播</translation>
     </message>
     <message>
+        <location filename="../qml/page/SettingsPage.qml" line="584"/>
+        <source>Resume delay</source>
+        <translation>恢复延迟</translation>
+    </message>
+    <message>
         <location filename="../qml/page/SettingsPage.qml" line="411"/>
         <source>Appearance</source>
         <translation>外观</translation>

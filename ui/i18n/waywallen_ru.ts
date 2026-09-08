@@ -1867,6 +1867,11 @@ Related display: #%1</source>
         <translation>Автоповтор</translation>
     </message>
     <message>
+        <location filename="../qml/page/SettingsPage.qml" line="584"/>
+        <source>Resume delay</source>
+        <translation>Задержка возобновления</translation>
+    </message>
+    <message>
         <location filename="../qml/page/SettingsPage.qml" line="411"/>
         <source>Appearance</source>
         <translation>Внешний вид</translation>

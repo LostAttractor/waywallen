@@ -133,6 +133,7 @@ pub struct AutoReplayPolicy {
     pub fullscreen: AutoAction,
     pub session_locked: AutoAction,
     pub session_inactive: AutoAction,
+    pub resume_delay_ms: u32,
 }
 
 impl Default for AutoReplayPolicy {
@@ -144,6 +145,7 @@ impl Default for AutoReplayPolicy {
             fullscreen: AutoAction::Pause,
             session_locked: AutoAction::Stop,
             session_inactive: AutoAction::Stop,
+            resume_delay_ms: DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS,
         }
     }
 }
@@ -170,6 +172,10 @@ impl AutoReplayPolicy {
             AutoCondition::SessionInactive => &mut self.session_inactive,
         };
         *slot = action;
+    }
+
+    pub fn effective_resume_delay_ms(self) -> u32 {
+        self.resume_delay_ms.min(MAX_AUTO_REPLAY_RESUME_DELAY_MS)
     }
 }
 

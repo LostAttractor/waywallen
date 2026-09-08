@@ -29,6 +29,8 @@ pub use store::*;
 const DEBOUNCE_WRITE: Duration = Duration::from_secs(2);
 pub const DEFAULT_AUDIO_FADE_MS: u32 = 500;
 pub const MAX_AUDIO_FADE_MS: u32 = 2000;
+pub const DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS: u32 = 250;
+pub const MAX_AUTO_REPLAY_RESUME_DELAY_MS: u32 = 2000;
 pub const RENDERER_ENABLE_AUDIO_KEY: &str = "enable_audio";
 pub const RENDERER_VOLUME_KEY: &str = "volume";
 pub const MAX_RENDERER_VOLUME: u32 = 100;

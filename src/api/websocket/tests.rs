@@ -1,6 +1,30 @@
 use super::*;
 
 #[test]
+fn auto_replay_resume_delay_round_trips_defaults_and_clamps() {
+    let policy = crate::settings::AutoReplayPolicy {
+        resume_delay_ms: 750,
+        ..Default::default()
+    };
+    assert_eq!(auto_replay_from_pb(&auto_replay_to_pb(&policy)), policy);
+
+    let defaulted = auto_replay_from_pb(&pb::AutoReplayPolicy::default());
+    assert_eq!(
+        defaulted.resume_delay_ms,
+        crate::settings::DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS
+    );
+
+    let clamped = auto_replay_from_pb(&pb::AutoReplayPolicy {
+        resume_delay_ms: Some(u32::MAX),
+        ..Default::default()
+    });
+    assert_eq!(
+        clamped.resume_delay_ms,
+        crate::settings::MAX_AUTO_REPLAY_RESUME_DELAY_MS
+    );
+}
+
+#[test]
 fn pause_effect_settings_round_trip_and_clamp() {
     use crate::settings::{BlurEffectConfig, PauseEffectConfig, PauseEffectKind};
 

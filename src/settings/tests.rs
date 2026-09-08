@@ -661,6 +661,7 @@ fn auto_replay_default_actions() {
     assert_eq!(policy.fullscreen, AutoAction::Pause);
     assert_eq!(policy.session_locked, AutoAction::Stop);
     assert_eq!(policy.session_inactive, AutoAction::Stop);
+    assert_eq!(policy.resume_delay_ms, DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS);
 }
 
 #[test]
