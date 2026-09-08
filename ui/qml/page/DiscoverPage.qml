@@ -60,6 +60,15 @@ MD.Page {
         return s && s.filters ? s.filters : [];
     }
 
+    function sourceFilterOptions(id) {
+        const options = [];
+        for (const filter of sourceFilters(id)) {
+            for (const option of filter.options ?? [])
+                options.push(option);
+        }
+        return options;
+    }
+
     function sourceCapability(id) {
         const s = sourceInfo(id);
         return s ? Number(s.remoteCapability ?? 0) : 0;
@@ -190,7 +199,8 @@ MD.Page {
                 details: detailsQuery,
                 sourceName: root.sourceName(root.detailRow.sourceId),
                 remoteCapability: root.sourceCapability(root.detailRow.sourceId),
-                remoteHint: root.sourceRemoteHint(root.detailRow.sourceId)
+                remoteHint: root.sourceRemoteHint(root.detailRow.sourceId),
+                tagOptions: root.sourceFilterOptions(root.detailRow.sourceId)
             }
         });
     }
@@ -663,6 +673,7 @@ MD.Page {
                 details: detailsQuery
                 remoteCapability: root.detailRow ? root.sourceCapability(root.detailRow.sourceId) : 0
                 remoteHint: root.detailRow ? root.sourceRemoteHint(root.detailRow.sourceId) : ""
+                tagOptions: root.detailRow ? root.sourceFilterOptions(root.detailRow.sourceId) : []
                 downloadState: Number(root.detailRow?.acquisitionState ?? 0)
                 subscriptionState: Number(root.detailRow?.acquisitionState ?? 0)
 

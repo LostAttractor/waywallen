@@ -18,6 +18,7 @@ Item {
     }
     property int remoteCapability: 0
     property string remoteHint: ""
+    property var tagOptions: []
     property int downloadState: 0
     property int subscriptionState: 0
 
@@ -198,7 +199,7 @@ Item {
                         model: root.details?.tags ?? []
                         delegate: W.Tag {
                             required property string modelData
-                            text: modelData
+                            text: W.I18n.optionLabel(root.tagOptions, modelData)
                         }
                     }
                 }

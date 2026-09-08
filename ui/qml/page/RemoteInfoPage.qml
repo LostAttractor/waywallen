@@ -14,6 +14,7 @@ MD.Page {
     property string sourceName: ""
     property int remoteCapability: 0
     property string remoteHint: ""
+    property var tagOptions: []
 
     // A source that cannot name an item while listing it may still name it once
     // the item is opened, so let a detail lookup fill in what the row lacks.
@@ -23,7 +24,7 @@ MD.Page {
     }
 
     readonly property string formattedSize: formatSize(details?.size)
-    readonly property string tagsText: formatList(details?.tags)
+    readonly property string tagsText: formatTagList(details?.tags)
 
     function value(v) {
         return v === undefined || v === null ? "" : String(v);
@@ -33,12 +34,12 @@ MD.Page {
         return value(v).length > 0;
     }
 
-    function formatList(v) {
-        if (!v || v.length === 0)
+    function formatTagList(tags) {
+        if (!tags || tags.length === 0)
             return "";
         const out = [];
-        for (let i = 0; i < v.length; ++i)
-            out.push(String(v[i]));
+        for (const tag of tags)
+            out.push(W.I18n.optionLabel(root.tagOptions, tag));
         return out.join(", ");
     }
 

@@ -19,9 +19,7 @@ MD.Dialog {
     signal commit(var tags)
 
     function tagLabel(tag) {
-        const option = (control.options ?? []).find(option => option.value === tag);
-        const label = W.I18n.tr(option?.labelText ?? option?.label ?? control.tagLabels?.[tag] ?? tag);
-        return label.length > 0 ? label : tag;
+        return W.I18n.optionLabel(control.options, tag, control.tagLabels?.[tag]);
     }
     function tags() {
         return control.options?.length > 0

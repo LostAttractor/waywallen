@@ -37,9 +37,7 @@ MD.Dialog {
         return sanitize((filter?.options ?? []).map(option => option.value));
     }
     function valueLabel(filter, value) {
-        const option = (filter?.options ?? []).find(option => option.value === value);
-        const label = W.I18n.tr(option?.labelText ?? option?.label ?? value);
-        return label.length > 0 ? label : value;
+        return W.I18n.optionLabel(filter?.options ?? [], value);
     }
     function selectedMap() {
         let allowed = {};
