@@ -49,7 +49,6 @@ pub enum ApplySource {
     StartupRestore,
     DisplayRecall,
     PlaylistAttach,
-    PluginRestart,
 }
 
 impl ApplySource {
@@ -66,7 +65,6 @@ impl ApplySource {
             Self::StartupRestore => "startup-restore",
             Self::DisplayRecall => "display-recall",
             Self::PlaylistAttach => "playlist-attach",
-            Self::PluginRestart => "plugin-restart",
         }
     }
 

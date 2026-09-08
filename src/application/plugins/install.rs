@@ -1,4 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,7 +8,6 @@ use crate::events::GlobalEvent;
 use crate::model::repo;
 use crate::plugin::renderer_registry::PluginPackageMeta;
 use crate::wallframe::renderer_manager;
-use crate::wallframe::scheduler::DisplayId;
 use crate::DaemonContext;
 
 use super::reload;
@@ -38,62 +36,17 @@ fn active_plugin_identity(
         })
 }
 
-async fn affected_display_plan(
-    app: &Arc<DaemonContext>,
-    renderer_ids: &[renderer_manager::RendererId],
-) -> BTreeMap<String, Vec<DisplayId>> {
-    let affected: BTreeSet<_> = renderer_ids.iter().cloned().collect();
-    let mut plan: BTreeMap<String, BTreeSet<DisplayId>> = BTreeMap::new();
-
-    for display in app.router.snapshot_displays().await {
-        if !display
-            .links
-            .iter()
-            .any(|link| affected.contains(&link.renderer_id))
-        {
-            continue;
-        }
-        let key = display.instance_id.as_deref().unwrap_or(&display.name);
-        let Some(wallpaper_id) = app.settings.resolved_last_wallpaper(key) else {
-            log::warn!(
-                "plugin install: display {} has no last wallpaper; cannot restart renderer link",
-                display.name
-            );
-            continue;
-        };
-        plan.entry(wallpaper_id).or_default().insert(display.id);
-    }
-    plan.into_iter()
-        .map(|(wallpaper_id, display_ids)| (wallpaper_id, display_ids.into_iter().collect()))
-        .collect()
-}
-
 async fn restart_affected_renderers(
     app: &Arc<DaemonContext>,
     renderer_ids: Vec<renderer_manager::RendererId>,
 ) -> Result<()> {
-    let plan = affected_display_plan(app, &renderer_ids).await;
-    for (wallpaper_id, display_ids) in plan {
-        if display_ids.is_empty() {
-            continue;
-        }
-        crate::application::apply_wallpaper_to_displays_with_first_frame_timeout(
-            app,
-            &wallpaper_id,
-            &display_ids,
+    app.router
+        .restart_renderers_orderly(
+            &renderer_ids,
+            Duration::from_secs(1),
             crate::application::APPLY_FIRST_FRAME_TIMEOUT,
-            crate::application::ApplySource::PluginRestart,
         )
-        .await?;
-    }
-    for renderer_id in renderer_ids {
-        if app.renderer_manager.get(&renderer_id).await.is_some() {
-            app.router
-                .stop_renderers_orderly(&[renderer_id], Duration::from_secs(1))
-                .await;
-        }
-    }
-    Ok(())
+        .await
 }
 
 fn spawn_affected_renderer_restart(

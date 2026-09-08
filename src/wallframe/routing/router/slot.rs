@@ -11,6 +11,7 @@ pub enum RendererActivity {
 pub(super) enum RendererStartCause {
     ExplicitApply { preempt_pending: bool },
     ExplicitSpawn,
+    ExplicitRestart,
     AutoReplayResume,
     ManualStopResume,
     DisplayReconnect,
@@ -26,6 +27,7 @@ impl RendererStartCause {
                 preempt_pending: false,
             } => "explicit-coalescing",
             Self::ExplicitSpawn => "explicit-spawn",
+            Self::ExplicitRestart => "explicit-restart",
             Self::AutoReplayResume => "auto-replay",
             Self::ManualStopResume => "manual-stop-resume",
             Self::DisplayReconnect => "display-reconnect",
@@ -38,6 +40,7 @@ impl RendererStartCause {
             Self::ExplicitApply {
                 preempt_pending: true
             } | Self::ExplicitSpawn
+                | Self::ExplicitRestart
                 | Self::DisplayReconnect
         )
     }
@@ -48,6 +51,7 @@ impl RendererStartCause {
             Self::ExplicitApply {
                 preempt_pending: true
             } | Self::ExplicitSpawn
+                | Self::ExplicitRestart
                 | Self::ManualStopResume
                 | Self::DisplayReconnect
         )

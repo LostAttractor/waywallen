@@ -53,7 +53,6 @@ fn apply_sources_project_to_start_preemption_once() {
         ApplySource::StartupRestore,
         ApplySource::DisplayRecall,
         ApplySource::PlaylistAttach,
-        ApplySource::PluginRestart,
     ];
     for source in immediate {
         assert!(source.preempts_pending_start(), "{}", source.as_str());

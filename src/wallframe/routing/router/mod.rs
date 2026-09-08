@@ -6374,6 +6374,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn explicit_restart_preserves_assignment_when_replacement_fails() {
+        let mgr = Arc::new(RendererManager::new_default());
+        let router = Router::new(mgr.clone());
+        let renderer = RendererHandle::test_stub("r1", "scene");
+        mgr.register_test_handle(renderer.clone()).await;
+        router.register_renderer(renderer).await;
+        let display = router.register_display(reg("DP-1", 1920, 1080)).await;
+
+        let error = router
+            .restart_renderers_orderly(&["r1".into()], Duration::ZERO, Duration::ZERO)
+            .await
+            .expect_err("replacement is absent from the test registry");
+
+        assert!(matches!(error, crate::error::Error::RendererSpawnFailed(_)));
+        assert!(matches!(
+            router.snapshot_renderer("r1").await.unwrap().state,
+            RendererLifecycleState::Failed { .. }
+        ));
+        let display = router.snapshot_display(display.id).await.unwrap();
+        assert_eq!(display.links.len(), 1);
+        assert_eq!(display.links[0].renderer_id, "r1");
+        assert!(display.links[0].active);
+    }
+
+    #[tokio::test]
     async fn retained_apply_during_stop_commits_latest_spec() {
         let mgr = Arc::new(RendererManager::new_default());
         let router = Router::new(mgr.clone());

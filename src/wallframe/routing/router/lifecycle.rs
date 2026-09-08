@@ -112,6 +112,147 @@ impl Router {
             .await
     }
 
+    pub async fn restart_renderers_orderly(
+        self: &Arc<Self>,
+        renderer_ids: &[RendererId],
+        ack_timeout: Duration,
+        first_frame_timeout: Duration,
+    ) -> crate::error::Result<()> {
+        let mut renderer_ids = renderer_ids.to_vec();
+        renderer_ids.sort();
+        renderer_ids.dedup();
+
+        let mut active = Vec::new();
+        let mut first_error = None;
+        for renderer_id in renderer_ids {
+            let result = self
+                .restart_renderer_orderly(&renderer_id, ack_timeout)
+                .await;
+            match result {
+                Ok(Some(renderer)) => active.push(renderer),
+                Ok(None) => {}
+                Err(error) => {
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+            }
+        }
+        for renderer in &active {
+            if let Err(error) = self
+                .wait_for_first_frame(renderer, first_frame_timeout)
+                .await
+            {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    async fn restart_renderer_orderly(
+        self: &Arc<Self>,
+        renderer_id: &str,
+        ack_timeout: Duration,
+    ) -> crate::error::Result<Option<ActiveRenderer>> {
+        let (process_generation, has_assignment, has_demand) = {
+            let inner = self.inner.lock().await;
+            let Some(handle) = inner.table.get_renderer(renderer_id) else {
+                return Ok(None);
+            };
+            let links = inner.table.links_for_renderer(renderer_id);
+            let has_assignment = !links.is_empty();
+            let has_demand = links
+                .iter()
+                .any(|link| link.enabled && inner.displays.contains_key(&link.display_id));
+            (handle.process_generation, has_assignment, has_demand)
+        };
+
+        if !has_assignment {
+            self.stop_renderer_drop(renderer_id, ack_timeout).await?;
+            return Ok(None);
+        }
+
+        self.begin_retained_stop(renderer_id).await;
+        if has_demand {
+            self.request_renderer_start(renderer_id, RendererStartCause::ExplicitRestart)
+                .await?;
+        }
+
+        let affected_displays = {
+            let mut inner = self.inner.lock().await;
+            let current = inner
+                .table
+                .get_renderer(renderer_id)
+                .is_some_and(|handle| handle.process_generation == process_generation);
+            if !current {
+                return Err(crate::error::Error::Internal(anyhow::anyhow!(
+                    "renderer {renderer_id} changed generation while preparing restart"
+                )));
+            }
+            inner.table.detach_renderer(renderer_id);
+            let display_ids = inner
+                .table
+                .links_for_renderer(renderer_id)
+                .into_iter()
+                .map(|link| link.display_id)
+                .collect::<Vec<_>>();
+            for display_id in &display_ids {
+                if let Some(display) = inner.displays.get(display_id) {
+                    display.invalidate_consumption();
+                }
+            }
+            display_ids
+        };
+        for display_id in affected_displays {
+            self.sync_display(display_id).await;
+        }
+
+        self.finish_retained_stop(renderer_id).await;
+
+        let (state, still_has_demand) = {
+            let inner = self.inner.lock().await;
+            let state = inner
+                .renderer_slots
+                .get(renderer_id)
+                .map(|slot| slot.state.clone())
+                .ok_or_else(|| crate::error::Error::RendererNotFound(renderer_id.to_string()))?;
+            let still_has_demand = inner
+                .table
+                .links_for_renderer(renderer_id)
+                .iter()
+                .any(|link| link.enabled && inner.displays.contains_key(&link.display_id));
+            (state, still_has_demand)
+        };
+        match state {
+            RendererLifecycleState::Running { generation, .. }
+                if generation != process_generation =>
+            {
+                Ok(Some(ActiveRenderer {
+                    renderer_id: renderer_id.to_string(),
+                    process_generation: generation,
+                }))
+            }
+            RendererLifecycleState::Stopped { keep: true, .. }
+            | RendererLifecycleState::Killed { keep: true, .. }
+                if !still_has_demand =>
+            {
+                Ok(None)
+            }
+            RendererLifecycleState::Failed { failure } => {
+                Err(crate::error::Error::RendererSpawnFailed(failure.reason))
+            }
+            state => Err(crate::error::Error::Internal(anyhow::anyhow!(
+                "renderer {renderer_id} restart ended in state {}",
+                state.as_str()
+            ))),
+        }
+    }
+
     async fn stop_renderer_drop_current(
         self: &Arc<Self>,
         renderer_id: &str,
