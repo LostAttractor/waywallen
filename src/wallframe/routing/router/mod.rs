@@ -3368,7 +3368,7 @@ impl Router {
                     self.schedule_resume_retry(&id, control).await;
                 }
             } else {
-                log::info!("{label} renderer {id} ({cause})");
+                log::debug!("{label} renderer {id} ({cause})");
                 if resume_control.is_some() {
                     self.clear_resume_retry(&id).await;
                 }

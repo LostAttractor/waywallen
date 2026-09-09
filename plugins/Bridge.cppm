@@ -214,7 +214,7 @@ export inline void ww_renderer_log_init() {
     rstd::log::set_max_level(rstd::log::LevelFilter::Trace);
 
     auto initial = rstd::log::LevelFilter::Info;
-    if (auto value = rstd::env::var("WW_LOG"_str); value.is_some()) {
+    if (auto value = rstd::env::var("WW_LOG"_str).ok(); value.is_some()) {
         auto parsed = rstd::log::parse_level_filter(value->as_str());
         if (parsed.is_some()) {
             initial = parsed.unwrap_unchecked();

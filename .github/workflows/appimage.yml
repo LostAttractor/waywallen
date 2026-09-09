@@ -105,16 +105,18 @@ jobs:
           ref="${{ inputs.tag || github.ref_name }}"
           echo "tag=$ref" >> "$GITHUB_OUTPUT"
 
-      - name: Extract changelog
-        run: |
-          python3 scripts/changelog.py "${{ steps.rel.outputs.tag }}" > /tmp/changelog.md
-          cat /tmp/changelog.md
+      - name: Prepare release notes
+        id: release-notes
+        uses: hypengw/appstream-release-notes-action@v0.1.0
+        with:
+          file: ui/assets/waywallen-ui.releases.xml
+          version: ${{ steps.rel.outputs.tag }}
 
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.rel.outputs.tag }}
           artifacts: release-artifacts/*.AppImage*
-          bodyFile: /tmp/changelog.md
+          bodyFile: ${{ steps.release-notes.outputs.path }}
           immutableCreate: true
           skipIfReleaseExists: true

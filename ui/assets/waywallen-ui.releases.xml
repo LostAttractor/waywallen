@@ -1,3 +1,21 @@
+<release version="0.3.9" date="2026-09-08">
+  <description>
+    <p>Improved:</p>
+    <ul>
+      <li>Wallhaven detail tags use the localized labels declared by the source.</li>
+      <li>Tray menu labels can be translated. #240 by @wehrwolfmann</li>
+      <li>Russian translations use clearer wording. #245 by @wehrwolfmann</li>
+      <li>Native dependencies use the current Lito declaration model.</li>
+    </ul>
+    <p>Fixed:</p>
+    <ul>
+      <li>Plugin updates restart affected renderers.</li>
+      <li>Automatic playback resume is debounced to avoid repeated restarts.</li>
+      <li>Video wallpapers preserve their playback position across pause and fade transitions.</li>
+      <li>Plugin setting labels no longer show unresolved translation keys. #211 by @wehrwolfmann</li>
+    </ul>
+  </description>
+</release>
 <release version="0.3.8" date="2026-08-31">
   <description>
     <p>Added:</p>
