@@ -372,7 +372,7 @@ type MprisSubscribers = BTreeMap<RendererId, u64>;
 
 fn mpris_subscribers(snapshot: &RendererSubscriptionSnapshot) -> MprisSubscribers {
     snapshot
-        .subscribers(RendererEventKind::Mpris)
+        .subscribers_with_membership_generation(RendererEventKind::Mpris)
         .into_iter()
         .collect()
 }
@@ -594,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn selects_new_and_revised_subscribers_in_stable_order() {
+    fn selects_new_and_resubscribed_renderers_in_stable_order() {
         let previous = BTreeMap::from([
             ("keep".to_string(), 2),
             ("revised".to_string(), 3),

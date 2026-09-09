@@ -79,7 +79,7 @@ impl RendererWriter {
                 if let Some((revision, msg)) = latest {
                     if subscriptions
                         .snapshot()
-                        .revision_for(&id, RendererEventKind::Audio)
+                        .wire_revision_for(&id, RendererEventKind::Audio)
                         == Some(revision)
                     {
                         if let Err(error) = send_control(&stream, &msg, &[]) {

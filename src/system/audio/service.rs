@@ -76,7 +76,7 @@ impl AudioService {
         tasks.spawn_async(TaskKind::Service, "service/audio", async move {
             let mut capture_demand = !subscriptions
                 .borrow()
-                .subscribers(RendererEventKind::Audio)
+                .subscribers_with_wire_revision(RendererEventKind::Audio)
                 .is_empty();
             let mut capture_enabled = settings.global().audio_capture_enabled;
             let _ = command_tx.send(CaptureWorkerCommand::Configure {
@@ -99,7 +99,7 @@ impl AudioService {
                         }
                         capture_demand = !subscriptions
                             .borrow()
-                            .subscribers(RendererEventKind::Audio)
+                            .subscribers_with_wire_revision(RendererEventKind::Audio)
                             .is_empty();
                         if !capture_demand {
                             last_sent = None;
@@ -176,7 +176,7 @@ impl AudioService {
                         last_sent = Some(identity);
                         let targets = manager
                             .subscription_snapshot()
-                            .subscribers(RendererEventKind::Audio);
+                            .subscribers_with_wire_revision(RendererEventKind::Audio);
                         for (id, revision) in targets {
                             if let Err(error) = manager
                                 .send_audio_window_latest(
@@ -238,7 +238,7 @@ fn next_audio_identity(last: Option<(u64, u64)>) -> (u64, u64) {
 async fn send_end(manager: &RendererManager, generation: u64, sequence: u64) {
     let targets = manager
         .subscription_snapshot()
-        .subscribers(RendererEventKind::Audio);
+        .subscribers_with_wire_revision(RendererEventKind::Audio);
     let captured_at_ns = monotonic_now_ns();
     for (id, revision) in targets {
         if let Err(error) = manager

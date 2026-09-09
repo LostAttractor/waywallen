@@ -6,7 +6,7 @@ use std::os::unix::net::UnixStream as StdUnixStream;
 use std::os::unix::process::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as StdRwLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -1608,7 +1608,7 @@ impl RendererManager {
 
     fn subscribed_to(&self, id: &str, kind: RendererEventKind) -> bool {
         self.subscription_snapshot()
-            .revision_for(id, kind)
+            .wire_revision_for(id, kind)
             .is_some()
     }
 
@@ -1619,7 +1619,7 @@ impl RendererManager {
             .ok_or_else(|| Error::RendererNotFound(id.to_string()))?;
         if self
             .subscription_snapshot()
-            .revision_for(id, RendererEventKind::Audio)
+            .wire_revision_for(id, RendererEventKind::Audio)
             != Some(window.subscription_revision)
         {
             return Ok(());
@@ -2257,7 +2257,7 @@ mod subscription_tests {
         registry.register("renderer".to_string());
         assert!(registry
             .snapshot()
-            .subscribers(RendererEventKind::Audio)
+            .subscribers_with_wire_revision(RendererEventKind::Audio)
             .is_empty());
 
         let applied = registry.prepare(
@@ -2273,13 +2273,13 @@ mod subscription_tests {
         assert_eq!(applied.kinds, vec!["pointer", "audio"]);
         assert!(registry
             .snapshot()
-            .subscribers(RendererEventKind::Audio)
+            .subscribers_with_wire_revision(RendererEventKind::Audio)
             .is_empty());
         registry.commit("renderer".to_string(), applied.commit.unwrap());
         assert_eq!(
             registry
                 .snapshot()
-                .revision_for("renderer", RendererEventKind::Audio),
+                .wire_revision_for("renderer", RendererEventKind::Audio),
             Some(1)
         );
 
@@ -2296,7 +2296,7 @@ mod subscription_tests {
         assert_eq!(
             registry
                 .snapshot()
-                .revision_for("renderer", RendererEventKind::Audio),
+                .wire_revision_for("renderer", RendererEventKind::Audio),
             Some(2)
         );
     }
@@ -2318,7 +2318,7 @@ mod subscription_tests {
         assert_eq!(too_many.status, EventSubscriptionStatus::LimitExceeded);
         assert!(registry
             .snapshot()
-            .subscribers(RendererEventKind::Audio)
+            .subscribers_with_wire_revision(RendererEventKind::Audio)
             .is_empty());
     }
 
@@ -2333,9 +2333,93 @@ mod subscription_tests {
         let mpris = registry.prepare("mpris", 4, &["pointer".to_string(), "mpris".to_string()]);
         registry.commit("mpris".to_string(), mpris.commit.unwrap());
 
+        let subscribers = registry
+            .snapshot()
+            .subscribers_with_membership_generation(RendererEventKind::Mpris);
+        assert_eq!(subscribers.len(), 1);
+        assert_eq!(subscribers[0].0.as_str(), "mpris");
+        assert_ne!(subscribers[0].1, 0);
+    }
+
+    #[test]
+    fn subscription_membership_generation_changes_only_with_its_kind() {
+        let registry = RendererSubscriptionRegistry::new();
+        registry.register("renderer".to_string());
+
+        let initial =
+            registry.prepare("renderer", 1, &["pointer".to_string(), "mpris".to_string()]);
+        registry.commit("renderer".to_string(), initial.commit.unwrap());
+        let initial_mpris_generation = registry
+            .snapshot()
+            .membership_generation_for("renderer", RendererEventKind::Mpris)
+            .unwrap();
         assert_eq!(
-            registry.snapshot().subscribers(RendererEventKind::Mpris),
-            vec![("mpris".to_string(), 4)]
+            registry
+                .snapshot()
+                .membership_generation_for("renderer", RendererEventKind::Mpris),
+            Some(initial_mpris_generation)
+        );
+
+        let audio_added = registry.prepare(
+            "renderer",
+            2,
+            &[
+                "pointer".to_string(),
+                "mpris".to_string(),
+                "audio".to_string(),
+            ],
+        );
+        registry.commit("renderer".to_string(), audio_added.commit.unwrap());
+        let snapshot = registry.snapshot();
+        assert_eq!(
+            snapshot.wire_revision_for("renderer", RendererEventKind::Mpris),
+            Some(2)
+        );
+        assert_eq!(
+            snapshot.membership_generation_for("renderer", RendererEventKind::Mpris),
+            Some(initial_mpris_generation)
+        );
+        let audio_generation = snapshot
+            .membership_generation_for("renderer", RendererEventKind::Audio)
+            .unwrap();
+        assert!(audio_generation > initial_mpris_generation);
+
+        let mpris_removed =
+            registry.prepare("renderer", 3, &["pointer".to_string(), "audio".to_string()]);
+        registry.commit("renderer".to_string(), mpris_removed.commit.unwrap());
+        assert_eq!(
+            registry
+                .snapshot()
+                .membership_generation_for("renderer", RendererEventKind::Mpris),
+            None
+        );
+
+        let mpris_restored = registry.prepare(
+            "renderer",
+            4,
+            &[
+                "pointer".to_string(),
+                "mpris".to_string(),
+                "audio".to_string(),
+            ],
+        );
+        registry.commit("renderer".to_string(), mpris_restored.commit.unwrap());
+        let restored_generation = registry
+            .snapshot()
+            .membership_generation_for("renderer", RendererEventKind::Mpris)
+            .unwrap();
+        assert!(restored_generation > initial_mpris_generation);
+
+        registry.remove("renderer");
+        registry.register("renderer".to_string());
+        let restarted = registry.prepare("renderer", 1, &["mpris".to_string()]);
+        registry.commit("renderer".to_string(), restarted.commit.unwrap());
+        assert!(
+            registry
+                .snapshot()
+                .membership_generation_for("renderer", RendererEventKind::Mpris)
+                .unwrap()
+                > restored_generation
         );
     }
 
