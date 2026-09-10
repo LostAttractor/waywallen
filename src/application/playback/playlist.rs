@@ -41,6 +41,15 @@ fn publishes_position_change(source: PlaylistApplySource) -> bool {
     )
 }
 
+/// Whether the port publishes once the assignments are done. A failed
+/// apply publishes too: the session moves its cursors before the port
+/// runs, so the status changed even when an assignment failed — and on
+/// a partial apply the remaining displays did take the new wallpaper.
+/// Without this, subscribers keep rendering a position the daemon left.
+fn publishes_after_apply(source: PlaylistApplySource, apply_failed: bool) -> bool {
+    publishes_position_change(source) || apply_failed
+}
+
 fn apply_port(app: &Arc<DaemonContext>, activation_source: ApplySource) -> ApplyPort {
     let app = app.clone();
     ApplyPort::new(move |request: ApplyRequest| {
@@ -93,11 +102,11 @@ fn apply_port(app: &Arc<DaemonContext>, activation_source: ApplySource) -> Apply
                     }
                 }
             }
+            if publishes_after_apply(playlist_source, first_error.is_some()) {
+                publish_changed(&app);
+            }
             if let Some(error) = first_error {
                 return Err(error);
-            }
-            if publishes_position_change(playlist_source) {
-                publish_changed(&app);
             }
             Ok(())
         }
@@ -456,4 +465,36 @@ pub async fn set_interval_for_playlist(
     interval_secs: u32,
 ) {
     app.playlists.set_interval(playlist_id, interval_secs).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SOURCES: [PlaylistApplySource; 6] = [
+        PlaylistApplySource::Activation,
+        PlaylistApplySource::Rotation,
+        PlaylistApplySource::Jump,
+        PlaylistApplySource::Step,
+        PlaylistApplySource::Rebuild,
+        PlaylistApplySource::Attach,
+    ];
+
+    #[test]
+    fn failed_apply_publishes_for_every_source() {
+        for source in SOURCES {
+            assert!(publishes_after_apply(source, true), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn successful_apply_publishes_only_position_changes() {
+        for source in SOURCES {
+            assert_eq!(
+                publishes_after_apply(source, false),
+                publishes_position_change(source),
+                "{source:?}"
+            );
+        }
+    }
 }
