@@ -103,6 +103,7 @@ message Request {
     PlaylistGetRequest          playlist_get = 86;
     PlaylistUpdateRequest       playlist_update = 87;
     LogReadRequest              log_read = 88;
+    WallpaperLookupRequest      wallpaper_lookup = 89;
   }
 }
 
@@ -193,6 +194,7 @@ message Response {
     PlaylistGetResponse          playlist_get = 86;
     Empty                        playlist_update = 87;
     LogReadResponse              log_read = 88;
+    WallpaperLookupResponse      wallpaper_lookup = 89;
   }
 }
 
@@ -559,6 +561,15 @@ message WallpaperListResponse {
   // Total number of entries matching wp_type, ignoring offset/limit. Allows the
   // client to know when it has fetched the last page.
   uint32 count = 2;
+}
+
+// Lightweight ordered lookup for views that already know the wallpaper ids.
+// It never invokes source plugins or remote services.
+message WallpaperLookupRequest {
+  repeated string wallpaper_ids = 1;
+}
+message WallpaperLookupResponse {
+  repeated WallpaperEntry wallpapers = 1;
 }
 
 // Fetch the freshest view of a single wallpaper (snapshot entry +
@@ -1336,7 +1347,33 @@ message Event {
     QrLoginProgress        qr_login_progress         = 23;
     Empty                  plugin_state_changed      = 24;
     CanvasSnapshot         canvas_snapshot           = 25;
+    WallpaperPresentationSnapshot wallpaper_presentation_snapshot = 26;
   }
+}
+
+enum WallpaperPresentationState {
+  WALLPAPER_PRESENTATION_STATE_UNSPECIFIED = 0;
+  WALLPAPER_PRESENTATION_STATE_STARTING = 1;
+  WALLPAPER_PRESENTATION_STATE_PLAYING = 2;
+  WALLPAPER_PRESENTATION_STATE_PAUSED = 3;
+  WALLPAPER_PRESENTATION_STATE_STOPPED = 4;
+}
+
+message WallpaperPresentationTarget {
+  oneof target {
+    uint64 display_id = 1;
+    string canvas_id = 2;
+  }
+}
+
+message WallpaperPresentationInfo {
+  string wallpaper_id = 1;
+  repeated WallpaperPresentationTarget targets = 2;
+  WallpaperPresentationState state = 3;
+}
+
+message WallpaperPresentationSnapshot {
+  repeated WallpaperPresentationInfo presentations = 1;
 }
 
 // Coarse daemon lifecycle. Orthogonal to `StatusSync.scan_in_progress`.

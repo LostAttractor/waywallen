@@ -89,6 +89,7 @@ MD.ApplicationWindow {
     }
 
     property int currentPage: 0
+    property string pendingWallpaperId: ""
 
     readonly property bool isCompact: MD.MProp.size.isCompact
 
@@ -117,6 +118,26 @@ MD.ApplicationWindow {
 
     onCurrentPageChanged: {
         m_content.switchTo(pageComponents[currentPage], {}, pageCacheable[currentPage]);
+    }
+
+    function openWallpaper(wallpaperId) {
+        pendingWallpaperId = String(wallpaperId || "");
+        if (pendingWallpaperId.length === 0)
+            return;
+        if (currentPage !== 0)
+            currentPage = 0;
+        Qt.callLater(deliverPendingWallpaper);
+    }
+
+    function deliverPendingWallpaper() {
+        if (currentPage !== 0 || pendingWallpaperId.length === 0)
+            return;
+        const page = m_content.currentItem;
+        if (!page || typeof page.openWallpaper !== "function")
+            return;
+        const wallpaperId = pendingWallpaperId;
+        pendingWallpaperId = "";
+        page.openWallpaper(wallpaperId);
     }
 
     Component.onCompleted: {
@@ -268,6 +289,21 @@ MD.ApplicationWindow {
                             width: parent.width
                             spacing: m_rail.useLarge ? 0 : 12
 
+                            W.SidebarNowPlaying {
+                                id: m_now_playing
+                                width: parent.width
+                                visible: W.App.presentationManager.count > 0
+                                expanded: m_rail.useLarge
+                                model: W.App.presentationManager.model
+                                onOpenRequested: wallpaperId => win.openWallpaper(wallpaperId)
+
+                                Binding {
+                                    target: m_rail
+                                    property: "drawerGestureEnabled"
+                                    value: !m_now_playing.pointerHovered
+                                }
+                            }
+
                             MD.RailItem {
                                 width: parent.width
                                 expand: m_rail.useLarge
@@ -330,6 +366,8 @@ MD.ApplicationWindow {
                 Layout.fillWidth: true
                 clip: true
                 initialItem: Item {}
+
+                onCurrentItemChanged: Qt.callLater(win.deliverPendingWallpaper)
 
                 MD.MProp.page: m_page_ctx
 

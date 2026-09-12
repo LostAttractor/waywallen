@@ -56,6 +56,7 @@ qt.qml_module({
     "qml/component/DetailActionBar.qml",
     "qml/component/PresentationTargetState.qml",
     "qml/component/PresentationTargetFlow.qml",
+    "qml/component/SidebarNowPlaying.qml",
     "qml/component/filter/StringFilter.qml",
     "qml/component/filter/IntFilter.qml",
     "qml/component/filter/WpTypeFilter.qml",
@@ -147,6 +148,11 @@ qt.qml_module({
       source = "src/objmodel/library.cppm",
       mode = "module-split",
       output = "waywallen/objmodel/library",
+    },
+    {
+      source = "src/objmodel/presentation.cppm",
+      mode = "module-split",
+      output = "waywallen/objmodel/presentation",
     },
     { source = "src/notify.cppm", mode = "module-split", output = "waywallen/notify" },
     {

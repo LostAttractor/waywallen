@@ -909,6 +909,60 @@ pub(super) fn router_event_to_pb(e: RouterEvent, settings: &SettingsStore) -> pb
     }
 }
 
+pub(super) fn wallpaper_presentations_event(
+    presentations: &[crate::wallframe::routing::WallpaperPresentationInfo],
+) -> pb::Event {
+    use crate::wallframe::routing::{
+        WallpaperPresentationState as State, WallpaperPresentationTarget as Target,
+    };
+
+    pb::Event {
+        payload: Some(pb::event::Payload::WallpaperPresentationSnapshot(
+            pb::WallpaperPresentationSnapshot {
+                presentations: presentations
+                    .iter()
+                    .map(|presentation| pb::WallpaperPresentationInfo {
+                        wallpaper_id: presentation.wallpaper_id.clone(),
+                        targets: presentation
+                            .targets
+                            .iter()
+                            .map(|target| pb::WallpaperPresentationTarget {
+                                target: Some(match target {
+                                    Target::Display(display_id) => {
+                                        pb::wallpaper_presentation_target::Target::DisplayId(
+                                            *display_id,
+                                        )
+                                    }
+                                    Target::Canvas(canvas_id) => {
+                                        pb::wallpaper_presentation_target::Target::CanvasId(
+                                            canvas_id.clone(),
+                                        )
+                                    }
+                                }),
+                            })
+                            .collect(),
+                        state: match presentation.state {
+                            State::Starting => pb::WallpaperPresentationState::Starting as i32,
+                            State::Playing => pb::WallpaperPresentationState::Playing as i32,
+                            State::Paused => pb::WallpaperPresentationState::Paused as i32,
+                            State::Stopped => pb::WallpaperPresentationState::Stopped as i32,
+                        },
+                    })
+                    .collect(),
+            },
+        )),
+    }
+}
+
+pub(super) fn router_event_affects_wallpaper_presentations(event: &RouterEvent) -> bool {
+    !matches!(
+        event,
+        RouterEvent::LibraryUpsert(_)
+            | RouterEvent::LibraryRemoved(_)
+            | RouterEvent::LibrariesReplace(_)
+    )
+}
+
 /// Snapshot daemon-side runtime state into a `StatusSync` server event.
 /// Pushed on WS connect, status changes, and task lifecycle events.
 pub(super) async fn status_sync_event(state: &Arc<DaemonContext>) -> pb::Event {

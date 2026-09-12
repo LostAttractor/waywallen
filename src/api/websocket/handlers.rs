@@ -551,6 +551,33 @@ pub(super) async fn dispatch_inner(
             })
         }
 
+        Req::WallpaperLookup(r) => {
+            let mut seen = std::collections::HashSet::new();
+            let item_ids = r
+                .wallpaper_ids
+                .into_iter()
+                .filter_map(|id| id.parse::<i64>().ok())
+                .filter(|id| seen.insert(*id))
+                .collect::<Vec<_>>();
+            let wallpapers = repo::get_entries_ordered(&state.db, &item_ids)
+                .await?
+                .into_iter()
+                .map(|entry| {
+                    let tags = entry.tags.clone();
+                    entry_to_pb(
+                        &entry,
+                        tags,
+                        String::new(),
+                        String::new(),
+                        None,
+                        false,
+                        false,
+                    )
+                })
+                .collect();
+            Res::WallpaperLookup(pb::WallpaperLookupResponse { wallpapers })
+        }
+
         Req::WallpaperGet(r) => {
             let entry = match r.wallpaper_id.parse::<i64>() {
                 Ok(iid) => repo::get_entry(&state.db, iid).await?,

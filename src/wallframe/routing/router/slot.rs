@@ -209,6 +209,7 @@ pub(super) enum RendererTransition {
 pub(super) struct RendererSlot {
     pub spawn_request: crate::wallframe::renderer_manager::SpawnRequest,
     pub name: String,
+    pub wallpaper_id: Option<String>,
     pub spec_revision: u64,
     pub state: RendererLifecycleState,
     pub pending_start: Option<PendingRendererStart>,
@@ -220,6 +221,7 @@ impl RendererSlot {
         Self {
             spawn_request: handle.spawn_request(),
             name: handle.name.clone(),
+            wallpaper_id: None,
             spec_revision: 1,
             state: RendererLifecycleState::Running {
                 generation: handle.process_generation,
@@ -237,6 +239,7 @@ impl RendererSlot {
         Self {
             spawn_request,
             name,
+            wallpaper_id: None,
             spec_revision: 1,
             state: RendererLifecycleState::Stopped {
                 keep: true,
@@ -421,6 +424,7 @@ mod tests {
         RendererSlot {
             spawn_request: Default::default(),
             name: "image".into(),
+            wallpaper_id: None,
             spec_revision: 1,
             state,
             pending_start: None,

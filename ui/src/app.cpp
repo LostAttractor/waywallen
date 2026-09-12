@@ -9,6 +9,7 @@ import :app;
 import :display;
 import :gpu;
 import :renderer;
+import :presentation;
 import :query;
 import :notify;
 import :plugin_translation;
@@ -43,6 +44,7 @@ public:
           m_qml_network_cache(1024ll * 1024ll * 1024ll),
           m_backend(Box<Backend>::make(port)),
           m_display_mgr(Box<DisplayManager>::make()),
+          m_presentation_mgr(Box<PresentationManager>::make()),
           m_renderer_mgr(Box<RendererManager>::make()),
           m_library_mgr(Box<LibraryManager>::make()),
           m_gpu_mgr(Box<GpuManager>::make()),
@@ -60,6 +62,7 @@ public:
     // Reverse dependency order keeps the QML engine first and Backend last during destruction.
     Box<Backend>               m_backend;
     Box<DisplayManager>        m_display_mgr;
+    Box<PresentationManager>   m_presentation_mgr;
     Box<RendererManager>       m_renderer_mgr;
     Box<LibraryManager>        m_library_mgr;
     Box<GpuManager>            m_gpu_mgr;
@@ -139,6 +142,7 @@ void App::init() {
     connect(dbus, &DaemonDBusClient::statusChanged, this, sync_backend);
 
     d->m_display_mgr->attachTo(d->m_backend.get());
+    d->m_presentation_mgr->attachTo(d->m_backend.get(), d->m_display_mgr.get());
     d->m_renderer_mgr->attachTo(d->m_backend.get());
     d->m_library_mgr->attachTo(d->m_backend.get());
 
@@ -292,6 +296,11 @@ auto App::libraryManager() const -> LibraryManager* {
 auto App::gpuManager() const -> GpuManager* {
     Q_D(const App);
     return d->m_gpu_mgr.as_mut_ptr();
+}
+
+auto App::presentationManager() const -> PresentationManager* {
+    Q_D(const App);
+    return d->m_presentation_mgr.as_mut_ptr();
 }
 
 auto App::networkCacheSize() const -> qint64 {

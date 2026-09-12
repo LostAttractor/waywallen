@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Debug, Clone)]
 pub struct ApplyAssignment {
+    pub wallpaper_id: String,
     pub spawn_request: crate::wallframe::renderer_manager::SpawnRequest,
     pub targets: Vec<AssignmentTarget>,
     pub duplicate_renderers: bool,
@@ -204,6 +205,11 @@ impl Router {
                             request.preempt_pending_start,
                         );
                 }
+                inner
+                    .renderer_slots
+                    .get_mut(&renderer_id)
+                    .expect("selected renderer slot disappeared")
+                    .wallpaper_id = Some(request.wallpaper_id.clone());
                 if request.wallpaper_layout_override.is_empty() {
                     inner.wallpaper_layout_overrides.remove(&renderer_id);
                 } else {

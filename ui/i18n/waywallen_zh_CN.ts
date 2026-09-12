@@ -2881,4 +2881,25 @@ Unsaved frame state may be lost.</source>
         <translation>任意</translation>
     </message>
 </context>
+<context>
+    <name>waywallen::PresentationManager</name>
+    <message>
+        <location filename="../src/objmodel/presentation.cpp" line="70"/>
+        <source>Display #%1</source>
+        <translation>显示器 #%1</translation>
+    </message>
+    <message>
+        <location filename="../src/objmodel/presentation.cpp" line="74"/>
+        <source>Canvas %1</source>
+        <translation>画布 %1</translation>
+    </message>
+</context>
+<context>
+    <name>SidebarNowPlaying</name>
+    <message>
+        <location filename="../qml/component/SidebarNowPlaying.qml" line="33"/>
+        <source>Current wallpapers</source>
+        <translation>当前壁纸</translation>
+    </message>
+</context>
 </TS>

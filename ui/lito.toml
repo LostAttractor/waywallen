@@ -45,6 +45,8 @@ sources = [
   "src/objmodel/gpu.cppm",
   "src/objmodel/library.cpp",
   "src/objmodel/library.cppm",
+  "src/objmodel/presentation.cpp",
+  "src/objmodel/presentation.cppm",
   "src/objmodel/renderer.cpp",
   "src/objmodel/renderer.cppm",
   "src/proto.cpp",

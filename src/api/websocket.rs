@@ -147,6 +147,7 @@ struct WsSession {
     global_rx: tokio::sync::broadcast::Receiver<GlobalEvent>,
     task_rx: tokio::sync::broadcast::Receiver<tasks::TaskEvent>,
     requests: JoinSet<()>,
+    last_wallpaper_presentations: Option<Vec<crate::wallframe::routing::WallpaperPresentationInfo>>,
 }
 
 impl WsSession {
@@ -175,6 +176,7 @@ impl WsSession {
             global_rx,
             task_rx,
             requests: JoinSet::new(),
+            last_wallpaper_presentations: None,
         }
     }
 
@@ -219,8 +221,13 @@ impl WsSession {
                 evt = self.events_rx.recv(), if router_events_open => {
                     match evt {
                         Ok(e) => {
+                            let affects_presentations =
+                                router_event_affects_wallpaper_presentations(&e);
                             let pe = router_event_to_pb(e, &self.state.settings);
                             self.frames.event(pe)?;
+                            if affects_presentations {
+                                self.send_wallpaper_presentations_if_changed().await?;
+                            }
                         }
                         Err(RecvError::Lagged(n)) => self.handle_router_lag(n).await?,
                         Err(RecvError::Closed) => {
@@ -249,7 +256,7 @@ impl WsSession {
         while self.requests.join_next().await.is_some() {}
     }
 
-    async fn send_initial_events(&self) -> Result<()> {
+    async fn send_initial_events(&mut self) -> Result<()> {
         self.send_router_snapshot().await?;
 
         let libraries = application::list_library_snapshots(&self.state.db).await;
@@ -258,7 +265,7 @@ impl WsSession {
         self.send_global_snapshot().await
     }
 
-    async fn send_router_snapshot(&self) -> Result<()> {
+    async fn send_router_snapshot(&mut self) -> Result<()> {
         let snap = self.state.router.snapshot_displays().await;
         self.frames
             .event(displays_replace_event(snap, &self.state.settings))?;
@@ -270,6 +277,27 @@ impl WsSession {
         let snap = self.state.router.snapshot_renderers().await;
         self.frames
             .event(renderers_replace_event(snap, &self.state.settings))?;
+        self.send_wallpaper_presentations(true).await?;
+        Ok(())
+    }
+
+    async fn send_wallpaper_presentations_if_changed(&mut self) -> Result<()> {
+        self.send_wallpaper_presentations(false).await
+    }
+
+    async fn send_wallpaper_presentations(&mut self, force: bool) -> Result<()> {
+        let snapshot = self.state.router.snapshot_wallpaper_presentations().await;
+        if !force
+            && self
+                .last_wallpaper_presentations
+                .as_ref()
+                .is_some_and(|previous| previous == &snapshot)
+        {
+            return Ok(());
+        }
+        self.frames
+            .event(wallpaper_presentations_event(&snapshot))?;
+        self.last_wallpaper_presentations = Some(snapshot);
         Ok(())
     }
 
@@ -319,7 +347,7 @@ impl WsSession {
         self.send_global_snapshot().await
     }
 
-    async fn handle_router_lag(&self, n: u64) -> Result<()> {
+    async fn handle_router_lag(&mut self, n: u64) -> Result<()> {
         log::warn!("ws {}: event lag {n}; resending full snapshot", self.peer);
         self.send_router_snapshot().await
     }

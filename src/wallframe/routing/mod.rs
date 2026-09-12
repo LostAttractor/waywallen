@@ -11,6 +11,7 @@ pub use router::{
     PauseEffectState, PresentationConfig, PresentationSnapshot, PresentationState,
     RendererActivity, RendererExitSnapshot, RendererLifecycleState, RendererSnapshot,
     ResolvedConfigMember, ResolvedConfigTarget, Router, RouterEvent, RuntimeCondition,
-    RuntimeConditionKind, RuntimeConditionOrigin, PRESENTATION_CAP_PAUSE_BLUR,
+    RuntimeConditionKind, RuntimeConditionOrigin, WallpaperPresentationInfo,
+    WallpaperPresentationState, WallpaperPresentationTarget, PRESENTATION_CAP_PAUSE_BLUR,
 };
 pub use table::{Link, LinkId, RoutingTable};

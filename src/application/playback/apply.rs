@@ -490,6 +490,7 @@ pub async fn apply_wallpaper(
     let receipt = app
         .router
         .apply_assignment(crate::wallframe::routing::ApplyAssignment {
+            wallpaper_id: entry.item_id.to_string(),
             spawn_request: spawn_req,
             targets: assignment_targets,
             duplicate_renderers,

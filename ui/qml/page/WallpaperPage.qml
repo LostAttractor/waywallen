@@ -522,6 +522,7 @@ MD.Page {
     }
 
     property var selectedWallpaper: null
+    property string requestedWallpaperId: ""
     property var currentWallpaperSelect: null
     property var wallpaperSelectSheet: null
     property var wallpaperTweakSheet: null
@@ -829,7 +830,16 @@ MD.Page {
 
         m_grid_view.currentIndex = index;
         userWallpaperSelect.anchorIndex = index;
+        root.requestedWallpaperId = "";
         root.selectedWallpaper = model.item(index);
+    }
+
+    function openWallpaper(wallpaperId) {
+        root.clearWallpaperSelection();
+        root.selectedWallpaper = null;
+        root.requestedWallpaperId = String(wallpaperId || "");
+        if (m_grid_view)
+            m_grid_view.currentIndex = -1;
     }
 
     function requestWallpaperSelection(index) {
@@ -1127,19 +1137,23 @@ MD.Page {
 
         // --- Right: wallpaper detail panel ---
         MD.Pane {
-            Layout.preferredWidth: root.selectedWallpaper !== null && !root.selectionActive ? 280 : 0
+            readonly property bool hasWallpaper: root.selectedWallpaper !== null || root.requestedWallpaperId.length > 0
+            Layout.preferredWidth: hasWallpaper && !root.selectionActive ? 280 : 0
             Layout.fillHeight: true
             Layout.maximumWidth: 280
-            visible: root.selectedWallpaper !== null && !root.selectionActive
+            visible: hasWallpaper && !root.selectionActive
             radius: root.MD.MProp.page.backgroundRadius
             padding: 0
             showBackground: true
 
             contentItem: WallpaperDetailPanel {
-                wallpaperId: root.selectedWallpaper?.id_proto ?? ""
+                wallpaperId: root.requestedWallpaperId.length > 0 ? root.requestedWallpaperId : (root.selectedWallpaper?.id_proto ?? "")
                 fallbackWallpaper: root.selectedWallpaper
                 showApply: true
-                onBack: root.selectedWallpaper = null
+                onBack: {
+                    root.selectedWallpaper = null;
+                    root.requestedWallpaperId = "";
+                }
             }
         }
     }
