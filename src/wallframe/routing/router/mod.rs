@@ -636,10 +636,13 @@ impl Router {
 
     pub async fn forward_pointer_motion(
         &self,
+        display_id: DisplayId,
         renderer_id: &str,
         event: crate::wallframe::ipc::proto::PointerMotion,
     ) -> crate::error::Result<()> {
-        self.mgr.send_pointer_motion(renderer_id, event).await
+        self.mgr
+            .send_display_pointer_motion(renderer_id, display_id, event)
+            .await
     }
 
     pub async fn forward_pointer_button(

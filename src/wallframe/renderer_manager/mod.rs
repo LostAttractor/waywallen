@@ -31,6 +31,7 @@ use crate::plugin::renderer_registry::{RendererActivityMode, RendererDef, Render
 use crate::settings::SettingsStore;
 
 mod handshake;
+mod pointer;
 mod reader;
 mod reported_state;
 mod subscriptions;
@@ -491,6 +492,9 @@ pub struct RendererHandle {
     /// NegotiateBuffers to this renderer, used for idempotence.
     last_dispatched_scheme:
         Arc<StdMutex<Option<crate::wallframe::dma::negotiate::NegotiatedScheme>>>,
+
+    /// Serializes display pointer ownership and its corresponding IPC writes.
+    pointer_focus: TokioMutex<pointer::Focus>,
 
     /// Sink for frame registration and member completion events.
     frame_record_tx:
@@ -1162,6 +1166,7 @@ impl RendererManager {
             release_syncobj,
             format_caps,
             last_dispatched_scheme: Arc::new(StdMutex::new(None)),
+            pointer_focus: TokioMutex::new(pointer::Focus::default()),
             frame_record_tx,
             pending_configure,
             child: Arc::new(TokioMutex::new(Some(child))),
@@ -1488,6 +1493,28 @@ impl RendererManager {
             return Ok(());
         }
         self.send_control(id, ControlMsg::PointerMotion { event })
+            .await
+    }
+
+    pub async fn send_display_pointer_motion(
+        &self,
+        id: &str,
+        display: crate::wallframe::scheduler::DisplayId,
+        event: PointerMotion,
+    ) -> Result<()> {
+        if !self.pointer_forwarding_enabled() || !self.subscribed_to(id, RendererEventKind::Pointer)
+        {
+            return Ok(());
+        }
+        let handle = self
+            .get(id)
+            .await
+            .ok_or_else(|| Error::RendererNotFound(id.to_owned()))?;
+        let mut focus = handle.pointer_focus.lock().await;
+        if !focus.update(display, &event) {
+            return Ok(());
+        }
+        self.send_control_to_handle(id, &handle, ControlMsg::PointerMotion { event })
             .await
     }
 
@@ -1957,6 +1984,7 @@ impl RendererHandle {
             release_syncobj: Arc::new(StdMutex::new(None)),
             format_caps: Arc::new(StdMutex::new(None)),
             last_dispatched_scheme: Arc::new(StdMutex::new(None)),
+            pointer_focus: TokioMutex::new(pointer::Focus::default()),
             frame_record_tx,
             pending_configure: Arc::new(StdMutex::new(None)),
             child: Arc::new(TokioMutex::new(None)),
@@ -2232,6 +2260,82 @@ mod subscription_tests {
                 },
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn display_pointer_leave_respects_shared_renderer_ownership() {
+        let manager = RendererManager::new_default();
+        let (handle, peer) = RendererHandle::test_stub_with_peer("renderer", "scene");
+        manager.register_test_handle(handle).await;
+        let applied = manager
+            .subscriptions
+            .prepare("renderer", 1, &["pointer".to_owned()]);
+        manager
+            .subscriptions
+            .commit("renderer".to_owned(), applied.commit.unwrap());
+        let motion = |x, y, timestamp_us| PointerMotion {
+            x,
+            y,
+            timestamp_us,
+            modifiers: 0,
+        };
+
+        // A enters, then B takes over the same canvas. A's delayed leave and
+        // an older queued sample must not disturb the pointer on B.
+        manager
+            .send_display_pointer_motion("renderer", 1, motion(10.0, 20.0, 1))
+            .await
+            .unwrap();
+        manager
+            .send_display_pointer_motion("renderer", 2, motion(30.0, 40.0, 3))
+            .await
+            .unwrap();
+        manager
+            .send_display_pointer_motion("renderer", 1, motion(-1.0, -1.0, 3))
+            .await
+            .unwrap();
+        manager
+            .send_display_pointer_motion("renderer", 1, motion(50.0, 60.0, 2))
+            .await
+            .unwrap();
+        manager
+            .send_display_pointer_motion("renderer", 2, motion(-1.0, -1.0, 4))
+            .await
+            .unwrap();
+        // Repeated absence is suppressed; re-entry at the same point is sent.
+        manager
+            .send_display_pointer_motion("renderer", 2, motion(-1.0, -1.0, 5))
+            .await
+            .unwrap();
+        manager
+            .send_display_pointer_motion("renderer", 2, motion(30.0, 40.0, 6))
+            .await
+            .unwrap();
+        // Disconnect/unbind has no timestamp and still clears the owning output.
+        manager
+            .send_display_pointer_motion("renderer", 2, motion(-1.0, -1.0, 0))
+            .await
+            .unwrap();
+
+        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        for (x, y) in [
+            (10.0, 20.0),
+            (30.0, 40.0),
+            (-1.0, -1.0),
+            (30.0, 40.0),
+            (-1.0, -1.0),
+        ] {
+            let ControlMsg::PointerMotion { event } = recv_control(&peer).unwrap().0 else {
+                panic!("expected pointer motion");
+            };
+            assert_eq!((event.x, event.y), (x, y));
+        }
+        peer.set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+        assert!(
+            recv_control(&peer).is_err(),
+            "unexpected extra pointer sample"
+        );
     }
 
     #[test]
@@ -2950,6 +3054,7 @@ mod reuse_tests {
             release_syncobj: Arc::new(StdMutex::new(None)),
             format_caps: Arc::new(StdMutex::new(None)),
             last_dispatched_scheme: Arc::new(StdMutex::new(None)),
+            pointer_focus: TokioMutex::new(pointer::Focus::default()),
             frame_record_tx: None,
             pending_configure: Arc::new(StdMutex::new(None)),
             child: Arc::new(TokioMutex::new(None)),

@@ -16,7 +16,7 @@ use crate::wallframe::ipc::proto::{
 // Display-protocol failures are daemon-internal; this layer talks to
 // display consumers over a UDS, not public WS or D-Bus surfaces.
 use crate::error::{Error, Result, ResultExt};
-use crate::wallframe::display::layout::display_point_to_texture;
+use crate::wallframe::display::layout::{display_motion_to_texture, display_point_to_texture};
 use crate::wallframe::renderer_manager::{PublishedPool, RendererHandle};
 use crate::wallframe::routing::{
     ConsumerImportFailureKind, ConsumerImportFailureOutcome, DisplayConsumptionPermit,
@@ -478,6 +478,11 @@ async fn run_frame_loop(
                     buffer_generation,
                     initial_config,
                 }) => {
+                    if let Some(old) = bound_renderer.as_ref() {
+                        if old.id != renderer.id {
+                            leave_pointer(&router, display_id, old).await;
+                        }
+                    }
                     bound_renderer = Some(Arc::clone(&renderer));
                     latest_config = Some(initial_config.clone());
                     if let Err(e) = send_bind(
@@ -490,6 +495,9 @@ async fn run_frame_loop(
                     }
                 }
                 Some(DisplayOutEvent::Unbind { buffer_generation }) => {
+                    if let Some(renderer) = bound_renderer.as_ref() {
+                        leave_pointer(&router, display_id, renderer).await;
+                    }
                     bound_renderer = None;
                     latest_config = None;
                     if let Err(e) = send_unbind(&stream, buffer_generation).await {
@@ -648,22 +656,20 @@ async fn run_frame_loop(
                         break Err(Error::Internal(anyhow!(message)));
                     }
                     if let (Some(r), Some(cfg)) = (bound_renderer.as_ref(), latest_config.as_ref()) {
-                        if let Some((tx, ty)) = display_point_to_texture(x, y, cfg) {
-                            // Pointer forwarding gates on the renderer's
-                            // manifest events list.
-                            if let Err(e) = router
-                                .forward_pointer_motion(
-                                    &r.id,
-                                    RendererPointerMotion {
-                                        x: tx,
-                                        y: ty,
-                                        timestamp_us,
-                                        modifiers,
-                                    },
-                                ).await
-                            {
-                                log::debug!("display {display_id}: pointer_motion forward failed: {e}");
-                            }
+                        let (tx, ty) = display_motion_to_texture(x, y, cfg);
+                        if let Err(e) = router
+                            .forward_pointer_motion(
+                                display_id,
+                                &r.id,
+                                RendererPointerMotion {
+                                    x: tx,
+                                    y: ty,
+                                    timestamp_us,
+                                    modifiers,
+                                },
+                            ).await
+                        {
+                            log::debug!("display {display_id}: pointer_motion forward failed: {e}");
                         }
                     }
                 }
@@ -774,11 +780,29 @@ async fn run_frame_loop(
     // operates on the socket itself, so all dup'd handles observe it.
     let _ = stream.shutdown(std::net::Shutdown::Both);
     let _ = reader_handle.await;
+    if let Some(renderer) = bound_renderer.as_ref() {
+        leave_pointer(&router, display_id, renderer).await;
+    }
     pending_arms.clear();
     for (_, session) in release_sessions {
         session.close();
     }
     result
+}
+
+async fn leave_pointer(router: &Router, display_id: u64, renderer: &RendererHandle) {
+    let _ = router
+        .forward_pointer_motion(
+            display_id,
+            &renderer.id,
+            RendererPointerMotion {
+                x: -1.0,
+                y: -1.0,
+                timestamp_us: 0,
+                modifiers: 0,
+            },
+        )
+        .await;
 }
 
 fn pointer_values_valid(values: &[f32], modifiers: u32) -> bool {

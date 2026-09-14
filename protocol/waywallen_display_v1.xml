@@ -222,6 +222,8 @@
     Pointer coordinates are actual surface-local pixels. `modifiers` uses:
       bit 0 Shift, bit 1 Ctrl, bit 2 Alt, bit 3 Super; bits 4..31 are zero.
     timestamp_us is CLOCK_MONOTONIC microseconds; zero means unavailable.
+    Send pointer_motion at (-1, -1) when the pointer leaves the surface.
+    Motion outside the surface/picture is forwarded as a renderer leave sample.
   -->
   <request name="pointer_motion" opcode="8">
     <arg name="x" type="f32"/>

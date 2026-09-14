@@ -212,6 +212,16 @@ pub fn compute(i: LayoutInput) -> LayoutOutput {
 }
 
 /// Map an actual display-surface point to renderer-texture-local pixels.
+/// Motion outside the displayed picture is a leave sample, rather than an
+/// event to discard: otherwise the renderer keeps the last pointer forever.
+pub fn display_motion_to_texture(x: f32, y: f32, cfg: &CompositionConfig) -> (f32, f32) {
+    if !(0.0..cfg.display_w).contains(&x) || !(0.0..cfg.display_h).contains(&y) {
+        return (-1.0, -1.0);
+    }
+    display_point_to_texture(x, y, cfg).unwrap_or((-1.0, -1.0))
+}
+
+/// Map an actual display-surface point to renderer-texture-local pixels.
 /// The destination rectangle is in pre-transform display space, so the
 /// surface point must be transformed back before applying that rectangle.
 pub fn display_point_to_texture(
@@ -547,6 +557,24 @@ mod tests {
             display_point_to_texture(1920.0, 1080.0, &c).unwrap(),
             (1920.0, 1080.0),
         );
+    }
+
+    #[test]
+    fn pointer_motion_preserves_leave_across_crop_and_rotation() {
+        for transform in 0..8 {
+            let c = cfg_with_display(
+                (400.0, 200.0, 800.0, 600.0),
+                (0.0, 0.0, 800.0, 600.0),
+                (800.0, 600.0),
+                transform,
+            );
+            for (x, y) in [(-1.0, -1.0), (-0.1, 100.0), (800.0, 100.0), (100.0, 600.0)] {
+                assert_eq!(display_motion_to_texture(x, y, &c), (-1.0, -1.0));
+            }
+            assert_ne!(display_motion_to_texture(400.0, 300.0, &c), (-1.0, -1.0));
+        }
+        let c = cfg((0.0, 0.0, 1920.0, 1080.0), (0.0, 75.0, 800.0, 450.0), 0);
+        assert_eq!(display_motion_to_texture(400.0, 10.0, &c), (-1.0, -1.0));
     }
 
     #[test]
