@@ -1920,6 +1920,20 @@ impl RendererHandle {
         (handle, rx)
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_stub_with_peer_and_frame_records(
+        id: &str,
+        wp_type: &str,
+    ) -> (
+        Arc<Self>,
+        StdUnixStream,
+        tokio::sync::mpsc::UnboundedReceiver<crate::wallframe::sync::FrameRecord>,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (handle, peer) = Self::test_stub_with_peer_inner(id, wp_type, Some(tx));
+        (handle, peer, rx)
+    }
+
     fn test_stub_with_peer_inner(
         id: &str,
         wp_type: &str,
