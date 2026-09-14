@@ -1150,7 +1150,7 @@ async fn forward_frame_ready(
     member: Option<crate::wallframe::sync::FrameConsumerMember>,
     requires_arm: bool,
 ) -> Result<Option<ForwardedFrame>> {
-    if !consumption.is_current() {
+    if !consumption.can_consume() {
         if let Some(member) = member {
             member.skip();
         }
@@ -1183,6 +1183,7 @@ async fn forward_frame_ready(
     drop(fence);
     drop(release_fd);
     send_result.map_err(|e| Error::Internal(anyhow!("send frame_ready: {e}")))?;
+    consumption.mark_delivered();
 
     let forwarded = member.map(|member| {
         let session = member.session();

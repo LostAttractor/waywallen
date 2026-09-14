@@ -94,6 +94,17 @@ impl Router {
                 buffer_generation: wire_generation,
                 initial_config: cfg,
             });
+            s.binding = Some(DisplayBinding {
+                renderer: renderer.clone(),
+                pool,
+                wire_generation,
+                delivery: Arc::new(DisplayFrameDelivery {
+                    auto_paused: AtomicBool::new(
+                        s.auto_replay.requested.action == AutoAction::Pause,
+                    ),
+                    delivered: AtomicBool::new(false),
+                }),
+            });
             if let Some(frame) = replay {
                 let _ = s.tx.send(DisplayOutEvent::Frame {
                     renderer: renderer.clone(),
@@ -104,11 +115,6 @@ impl Router {
                     member: None,
                 });
             }
-            s.binding = Some(DisplayBinding {
-                renderer,
-                pool,
-                wire_generation,
-            });
             s.failed_binding_generation = None;
         } else {
             let s = inner.displays.get_mut(&display_id).unwrap();
