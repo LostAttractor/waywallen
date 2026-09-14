@@ -98,6 +98,8 @@
     <field name="fade_ms" type="u32"/>
   </struct>
 
+  <!-- Coordinates are renderer-texture-local pixels. (-1, -1) reports that
+       the pointer left the renderer's contributing displays. -->
   <struct name="pointer_motion">
     <field name="x" type="f32"/>
     <field name="y" type="f32"/>
