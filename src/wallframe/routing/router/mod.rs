@@ -1244,7 +1244,13 @@ impl Router {
             let info = inner.displays.get(&display_id).unwrap().info.clone();
             let layout = self.resolved_layout_for_renderer(&info, &link.renderer_id, &inner);
             let cfg = project_link(&link, &pool, &info, cfg_gen, buffer_generation, &layout);
-            if let Some(state) = inner.displays.get(&display_id) {
+            if let Some(state) = inner.displays.get_mut(&display_id) {
+                if state.display_paused() {
+                    // A layout edit needs one fresh snapshot even while paused.
+                    // Retire queued frames before granting the new allowance.
+                    state.invalidate_consumption();
+                    state.binding.as_mut().unwrap().awaiting_initial_frame = true;
+                }
                 if state
                     .tx
                     .send(DisplayOutEvent::SetCompositionConfig(cfg))
@@ -5935,6 +5941,45 @@ mod tests {
             out.push(ev);
         }
         out
+    }
+
+    #[tokio::test]
+    async fn auto_replay_paused_layout_refresh_invalidates_old_frames_and_freezes_again() {
+        let mgr = Arc::new(RendererManager::new_default());
+        let router = Router::new(mgr.clone());
+        router.attach_settings(
+            settings_with_auto_replay(auto_replay(&[(AutoCondition::AnyWindow, AutoAction::Pause)]))
+                .await,
+        );
+        let (renderer, peer, _records) =
+            RendererHandle::test_stub_with_peer_and_frame_records("image", "image");
+        renderer.test_publish_pool(fake_published_pool(1, 1920, 1080));
+        mgr.register_test_handle(renderer.clone()).await;
+        router.register_renderer(renderer).await;
+        let mut display = router.register_display(reg("A", 1920, 1080)).await;
+        router.on_renderer_frame("image", 1, 0, 1, 1).await;
+        drain_display_events(&mut display.rx);
+        router
+            .update_display_window_state(display.id, ar::FLAG_NON_MINIMIZED)
+            .await;
+        drain_renderer_controls(&peer);
+        let old_permit = router.inner.lock().await.displays[&display.id].consumption_permit();
+
+        router.resync_display_composition(display.id).await;
+        assert!(last_composition_config(&mut display.rx).is_some());
+        assert_eq!(
+            crate::wallframe::ipc::uds::recv_control(&peer).unwrap().0,
+            ControlMsg::RequestFrame
+        );
+        assert!(!old_permit.is_current());
+        router.on_renderer_frame("image", 1, 0, 2, 2).await;
+        assert!(drain_display_events(&mut display.rx).iter().any(|event| matches!(
+            event,
+            DisplayOutEvent::Frame { seq: 2, consumption, .. } if consumption.is_current()
+        )));
+        router.on_renderer_frame("image", 1, 0, 3, 3).await;
+        assert!(display.rx.try_recv().is_err());
+        assert!(router.is_paused("image").await);
     }
 
     #[tokio::test]
