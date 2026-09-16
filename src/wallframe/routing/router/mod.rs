@@ -922,15 +922,58 @@ impl Router {
         self: &Arc<Self>,
         canvas_ids: impl IntoIterator<Item = String>,
     ) {
-        let mut affected = {
+        let (mut affected, isolated) = {
             let mut inner = self.inner.lock().await;
-            canvas_ids
+            let affected = canvas_ids
                 .into_iter()
                 .flat_map(|canvas_id| self.refresh_canvas_locked(&mut inner, &canvas_id))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            // Removing a Canvas (or one of its members) creates independent
+            // targets. They must no longer share interactive renderer state.
+            let mut isolated = Vec::new();
+            for display_id in &affected {
+                for link in inner.table.links_for_display(*display_id) {
+                    if link.projection != LinkProjection::Independent {
+                        continue;
+                    }
+                    let renderer_id = self.renderer_for_target_locked(
+                        &mut inner,
+                        link.renderer_id.clone(),
+                        WallpaperPresentationTarget::Display(*display_id),
+                    );
+                    if renderer_id != link.renderer_id {
+                        inner.table.add_link_with_enabled(
+                            renderer_id.clone(),
+                            *display_id,
+                            link.enabled,
+                        );
+                        if let Some(display) = inner.displays.get(display_id) {
+                            display.invalidate_consumption();
+                        }
+                        isolated.push((renderer_id, *display_id));
+                    }
+                }
+            }
+            (affected, isolated)
         };
         affected.sort_unstable();
         affected.dedup();
+        for (renderer_id, display_id) in &isolated {
+            self.sync_display(*display_id).await;
+            if let Err(error) = self
+                .request_renderer_start(renderer_id, RendererStartCause::DisplayReconnect)
+                .await
+            {
+                log::warn!("renderer {renderer_id}: Canvas split start failed: {error}");
+            }
+            if let Some(snapshot) = self.snapshot_renderer(renderer_id).await {
+                self.emit(RouterEvent::RendererUpsert(snapshot));
+            }
+        }
+        if !isolated.is_empty() {
+            self.reconcile_lifecycle().await;
+            self.reconcile_buffer_flags().await;
+        }
         self.resync_display_compositions(affected).await;
         self.emit(RouterEvent::DisplaysReplace(self.snapshot_displays().await));
         self.emit(RouterEvent::CanvasesReplace(self.snapshot_canvases().await));
@@ -1781,6 +1824,13 @@ impl Router {
                     })
                     .map(|link| link.renderer_id)
                     .or(restored_renderer);
+                let existing = existing.map(|renderer_id| {
+                    self.renderer_for_target_locked(
+                        &mut inner,
+                        renderer_id,
+                        WallpaperPresentationTarget::Canvas(canvas_id.clone()),
+                    )
+                });
                 if let (Some(renderer_id), Some(extent), Some(member)) = (
                     existing.clone(),
                     crate::wallframe::display::placement::union(
@@ -1823,6 +1873,13 @@ impl Router {
                     let mut ids = inner.renderer_slots.keys().cloned().collect::<Vec<_>>();
                     ids.sort();
                     ids.into_iter().next()
+                });
+                let auto = auto.map(|renderer_id| {
+                    self.renderer_for_target_locked(
+                        &mut inner,
+                        renderer_id,
+                        WallpaperPresentationTarget::Display(id),
+                    )
                 });
                 if let Some(renderer_id) = auto.clone() {
                     let enabled = !inner.manual_stopped;
@@ -5094,6 +5151,255 @@ mod tests {
             .reusable_renderer_for_target(&different, &[], false)
             .await
             .is_none());
+    }
+
+    fn isolated_renderer_manager() -> Arc<RendererManager> {
+        use crate::plugin::renderer_registry::{RendererDef, RendererRegistry};
+        let renderer: RendererDef = toml::from_str(
+            r#"
+            name = "test-stub"
+            bin = "/unused-renderer"
+            types = ["scene"]
+            sharing = "per_target"
+        "#,
+        )
+        .unwrap();
+        let mut registry = RendererRegistry::new();
+        registry.register(renderer);
+        Arc::new(RendererManager::new(registry))
+    }
+
+    fn isolated_assignment(targets: Vec<AssignmentTarget>) -> ApplyAssignment {
+        ApplyAssignment {
+            wallpaper_id: "86".into(),
+            spawn_request: crate::wallframe::renderer_manager::SpawnRequest {
+                wp_type: "scene".into(),
+                renderer_name: Some("test-stub".into()),
+                ..Default::default()
+            },
+            targets,
+            duplicate_renderers: false,
+            wallpaper_layout_override: WallpaperLayoutOverride::default(),
+            preempt_pending_start: true,
+        }
+    }
+
+    async fn assigned_renderer(router: &Arc<Router>, display: DisplayId) -> RendererId {
+        let snapshot = router.snapshot_display(display).await.unwrap();
+        assert_eq!(snapshot.links.len(), 1);
+        snapshot.links[0].renderer_id.clone()
+    }
+
+    #[tokio::test]
+    async fn per_target_sharing_is_enforced_for_initial_apply_and_running_reuse() {
+        let manager = isolated_renderer_manager();
+        let router = Router::new(manager.clone());
+        let first = router.register_display(reg("A", 1920, 1080)).await;
+        let second = router.register_display(reg("B", 1920, 1080)).await;
+        router.inner.lock().await.manual_stopped = true;
+        let targets = [first.id, second.id]
+            .into_iter()
+            .flat_map(|id| assignment_targets(vec![id]))
+            .collect();
+        let request = isolated_assignment(targets);
+        let receipt = router.apply_assignment(request.clone()).await.unwrap();
+        assert_eq!(receipt.activation, AssignmentActivation::Deferred);
+        let a = assigned_renderer(&router, first.id).await;
+        let b = assigned_renderer(&router, second.id).await;
+        assert_ne!(a, b, "independent targets cannot share cursor state");
+
+        router.inner.lock().await.manual_stopped = false;
+        for id in [&a, &b] {
+            let renderer = RendererHandle::test_stub(id, "scene");
+            router
+                .inner
+                .lock()
+                .await
+                .renderer_slots
+                .get_mut(id)
+                .unwrap()
+                .transition(RendererLifecycleEvent::StartRequested {
+                    generation: renderer.process_generation,
+                    start_token: 1,
+                    reactivate_failed: false,
+                });
+            manager.register_test_handle(renderer.clone()).await;
+            router.register_renderer(renderer).await;
+        }
+        let receipt = router.apply_assignment(request.clone()).await.unwrap();
+        assert_eq!(receipt.active_renderers.len(), 2);
+        assert_eq!(assigned_renderer(&router, first.id).await, a);
+        assert_eq!(assigned_renderer(&router, second.id).await, b);
+        assert_eq!(router.snapshot_renderers().await.len(), 2);
+        assert_eq!(
+            router
+                .reusable_renderer_for_target(&request.spawn_request, &[first.id], false)
+                .await,
+            Some(a)
+        );
+        assert_eq!(
+            router
+                .reusable_renderer_for_target(&request.spawn_request, &[second.id], false)
+                .await,
+            Some(b)
+        );
+    }
+
+    #[tokio::test]
+    async fn per_target_sharing_splits_a_previously_shared_running_renderer() {
+        let manager = Arc::new(RendererManager::new_default());
+        let router = Router::new(manager.clone());
+        add_stub_renderer(&manager, &router, "shared").await;
+        let first = router.register_display(reg("A", 1920, 1080)).await;
+        let second = router.register_display(reg("B", 1920, 1080)).await;
+        assert_eq!(assigned_renderer(&router, first.id).await, "shared");
+        assert_eq!(assigned_renderer(&router, second.id).await, "shared");
+        manager.replace_registry(isolated_renderer_manager().registry_snapshot());
+        // Keep the original process live on A, but defer the new process on B.
+        router
+            .inner
+            .lock()
+            .await
+            .displays
+            .get_mut(&second.id)
+            .unwrap()
+            .auto_replay
+            .stop_applied = true;
+        router
+            .apply_assignment(isolated_assignment(assignment_targets(vec![second.id])))
+            .await
+            .unwrap();
+        assert_eq!(assigned_renderer(&router, first.id).await, "shared");
+        assert_ne!(assigned_renderer(&router, second.id).await, "shared");
+    }
+
+    #[tokio::test]
+    async fn per_target_sharing_survives_hotplug_and_reconnect() {
+        let router = Router::new(isolated_renderer_manager());
+        let first = router.register_display(reg_iid("A", "display-a")).await;
+        router.inner.lock().await.manual_stopped = true;
+        let mut request = isolated_assignment(assignment_targets(vec![first.id]));
+        request
+            .spawn_request
+            .settings
+            .insert("resolution".into(), "4".into());
+        request
+            .spawn_request
+            .user_property_overrides
+            .insert("mouse".into(), "true".into());
+        router.apply_assignment(request).await.unwrap();
+        let a = assigned_renderer(&router, first.id).await;
+        let second = router.register_display(reg_iid("B", "display-b")).await;
+        let b = assigned_renderer(&router, second.id).await;
+        assert_ne!(a, b);
+        {
+            let inner = router.inner.lock().await;
+            assert_eq!(inner.renderer_slots[&b].wallpaper_id.as_deref(), Some("86"));
+            let cloned = &inner.renderer_slots[&b].spawn_request;
+            assert_eq!(
+                cloned.settings.get("resolution").map(String::as_str),
+                Some("4")
+            );
+            assert_eq!(
+                cloned
+                    .user_property_overrides
+                    .get("mouse")
+                    .map(String::as_str),
+                Some("true")
+            );
+        }
+        router.unregister_display(second.id).await;
+        let second = router.register_display(reg_iid("B", "display-b")).await;
+        assert_ne!(assigned_renderer(&router, second.id).await, a);
+        assert_eq!(assigned_renderer(&router, first.id).await, a);
+    }
+
+    #[tokio::test]
+    async fn per_target_sharing_keeps_canvas_continuous_then_isolates_deleted_members() {
+        let settings = test_settings_store().await;
+        let members = ["left", "right"]
+            .into_iter()
+            .enumerate()
+            .map(|(i, key)| {
+                (
+                    key.to_string(),
+                    crate::settings::CanvasMemberPrefs {
+                        rect: CanvasRect {
+                            x: i as i32 * 1920,
+                            y: 0,
+                            width: 1920,
+                            height: 1080,
+                        },
+                        aspect_locked: true,
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let canvas = settings
+            .create_canvas(
+                crate::settings::CanvasDraft {
+                    name: "Continuous".into(),
+                    members: members.clone(),
+                    layout: None,
+                },
+                &HashMap::new(),
+            )
+            .unwrap();
+        let router = Router::new(isolated_renderer_manager());
+        router.attach_settings(settings.clone());
+        router.inner.lock().await.manual_stopped = true;
+        let left = router.register_display(reg_iid("Left", "left")).await;
+        let right = router.register_display(reg_iid("Right", "right")).await;
+        let third = router.register_display(reg_iid("Other", "other")).await;
+        let projections = [(left.id, "left"), (right.id, "right")]
+            .into_iter()
+            .map(|(id, key)| {
+                (
+                    id,
+                    LinkProjection::Canvas {
+                        canvas_id: canvas.canvas_id.clone(),
+                        extent: CanvasRect {
+                            x: 0,
+                            y: 0,
+                            width: 3840,
+                            height: 1080,
+                        },
+                        member: members[key].rect,
+                        layout: settings.resolved_global_layout(),
+                    },
+                )
+            })
+            .collect();
+        let mut targets = vec![AssignmentTarget {
+            display_ids: vec![left.id, right.id],
+            projections,
+        }];
+        targets.extend(assignment_targets(vec![third.id]));
+        router
+            .apply_assignment(isolated_assignment(targets))
+            .await
+            .unwrap();
+        let shared = assigned_renderer(&router, left.id).await;
+        assert_eq!(assigned_renderer(&router, right.id).await, shared);
+        assert_ne!(assigned_renderer(&router, third.id).await, shared);
+        router.unregister_display(right.id).await;
+        let right = router.register_display(reg_iid("Right", "right")).await;
+        assert_eq!(assigned_renderer(&router, right.id).await, shared);
+
+        settings
+            .delete_canvas(&canvas.canvas_id, settings.canvas_revision())
+            .unwrap();
+        router.canvas_configs_changed([canvas.canvas_id]).await;
+        let ids = [left.id, right.id, third.id];
+        let mut renderers = HashSet::new();
+        for id in ids {
+            renderers.insert(assigned_renderer(&router, id).await);
+            assert_eq!(
+                router.inner.lock().await.table.links_for_display(id)[0].projection,
+                LinkProjection::Independent
+            );
+        }
+        assert_eq!(renderers.len(), 3);
     }
 
     #[tokio::test(start_paused = true)]

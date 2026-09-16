@@ -5,7 +5,8 @@ fn force_shared_disables_duplicate_path() {
     assert!(!should_duplicate_renderers(
         true,
         true,
-        RendererSharingPolicy::Shared
+        RendererSharingPolicy::Shared,
+        false
     ));
 }
 
@@ -14,23 +15,38 @@ fn duplicate_only_when_setting_and_targets() {
     assert!(should_duplicate_renderers(
         true,
         true,
-        RendererSharingPolicy::UseSettings
+        RendererSharingPolicy::UseSettings,
+        false
     ));
     assert!(!should_duplicate_renderers(
         false,
         true,
-        RendererSharingPolicy::UseSettings
+        RendererSharingPolicy::UseSettings,
+        false
     ));
     assert!(!should_duplicate_renderers(
         true,
         false,
-        RendererSharingPolicy::UseSettings
+        RendererSharingPolicy::UseSettings,
+        false
     ));
     assert!(!should_duplicate_renderers(
         true,
         false,
-        RendererSharingPolicy::Shared
+        RendererSharingPolicy::Shared,
+        false
     ));
+}
+
+#[test]
+fn interactive_renderers_override_shared_requests() {
+    for sharing in [
+        RendererSharingPolicy::Shared,
+        RendererSharingPolicy::UseSettings,
+    ] {
+        assert!(should_duplicate_renderers(false, true, sharing, true));
+        assert!(!should_duplicate_renderers(true, false, sharing, true));
+    }
 }
 
 #[test]

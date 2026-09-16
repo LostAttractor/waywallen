@@ -103,8 +103,11 @@ fn should_duplicate_renderers(
     setting_enabled: bool,
     has_targets: bool,
     sharing: RendererSharingPolicy,
+    requires_isolation: bool,
 ) -> bool {
-    setting_enabled && has_targets && sharing == RendererSharingPolicy::UseSettings
+    has_targets
+        && (requires_isolation
+            || (setting_enabled && sharing == RendererSharingPolicy::UseSettings))
 }
 
 #[cfg(test)]

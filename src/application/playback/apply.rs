@@ -437,6 +437,7 @@ pub async fn apply_wallpaper(
         app.settings.global().duplicate_renderers_for_same_wallpaper,
         !target_ids.is_empty(),
         request.sharing,
+        renderer.sharing == crate::plugin::renderer_registry::RendererSharing::PerTarget,
     );
     let inherited_layout =
         wallpaper_layout_override.apply_to(app.settings.resolved_global_layout());

@@ -835,6 +835,7 @@ fn registry_with_video() -> RendererRegistry {
         types: vec!["video".into()],
         priority: 100,
         activity: crate::plugin::renderer_registry::RendererActivityMode::Continuous,
+        sharing: Default::default(),
         spawn_version: Some(1),
         extras: Vec::new(),
         settings: s,

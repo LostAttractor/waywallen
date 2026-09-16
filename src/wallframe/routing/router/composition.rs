@@ -45,6 +45,66 @@ struct AssignmentCommit {
 }
 
 impl Router {
+    fn requires_target_isolation(
+        &self,
+        request: &crate::wallframe::renderer_manager::SpawnRequest,
+    ) -> bool {
+        self.mgr.with_registry(|registry| {
+            let renderer = match request.renderer_name.as_deref() {
+                Some(name) => registry.resolve_by_name(name),
+                None => registry.resolve(&request.wp_type),
+            };
+            renderer.is_some_and(|renderer| {
+                renderer.sharing == crate::plugin::renderer_registry::RendererSharing::PerTarget
+            })
+        })
+    }
+
+    /// Seed a new target without sharing another target's interactive state.
+    /// A Canvas has one continuous coordinate space, so its members stay together.
+    pub(super) fn renderer_for_target_locked(
+        &self,
+        inner: &mut Inner,
+        renderer_id: RendererId,
+        target: WallpaperPresentationTarget,
+    ) -> RendererId {
+        let Some(slot) = inner.renderer_slots.get(&renderer_id) else {
+            return renderer_id;
+        };
+        if !self.requires_target_isolation(&slot.spawn_request)
+            || inner
+                .table
+                .links_for_renderer(&renderer_id)
+                .iter()
+                .all(|link| {
+                    let existing = match &link.projection {
+                        LinkProjection::Independent => {
+                            WallpaperPresentationTarget::Display(link.display_id)
+                        }
+                        LinkProjection::Canvas { canvas_id, .. } => {
+                            WallpaperPresentationTarget::Canvas(canvas_id.clone())
+                        }
+                    };
+                    existing == target
+                })
+        {
+            return renderer_id;
+        }
+        let mut copy = RendererSlot::retained(slot.spawn_request.clone(), slot.name.clone());
+        copy.wallpaper_id = slot.wallpaper_id.clone();
+        let new_id = uuid::Uuid::new_v4().to_string();
+        inner.renderer_slots.insert(new_id.clone(), copy);
+        if let Some(layout) = inner.wallpaper_layout_overrides.get(&renderer_id).copied() {
+            inner
+                .wallpaper_layout_overrides
+                .insert(new_id.clone(), layout);
+        }
+        if inner.renderer_manual_paused.contains(&renderer_id) {
+            inner.renderer_manual_paused.insert(new_id.clone());
+        }
+        new_id
+    }
+
     pub async fn wait_for_first_frame(
         self: &Arc<Self>,
         renderer: &ActiveRenderer,
@@ -67,6 +127,8 @@ impl Router {
             crate::catalog::properties::normalize_renderer_user_properties(
                 request.spawn_request.default_user_properties,
             );
+        let duplicate_renderers =
+            request.duplicate_renderers || self.requires_target_isolation(&request.spawn_request);
         let display_ids = request
             .targets
             .iter()
@@ -91,7 +153,7 @@ impl Router {
             let mut inner = self.inner.lock().await;
             let groups = if display_ids.is_empty() {
                 vec![Vec::new()]
-            } else if request.duplicate_renderers {
+            } else if duplicate_renderers {
                 request
                     .targets
                     .iter()
@@ -147,7 +209,7 @@ impl Router {
                                     && slot.spawn_request.extras == request.spawn_request.extras
                                     && slot.spawn_request.default_user_properties
                                         == request.spawn_request.default_user_properties;
-                                let target_matches = !request.duplicate_renderers
+                                let target_matches = !duplicate_renderers
                                     || inner
                                         .table
                                         .links_for_renderer(renderer_id)
@@ -411,6 +473,7 @@ impl Router {
         target_ids: &[DisplayId],
         duplicate_renderer: bool,
     ) -> Option<RendererId> {
+        let duplicate_renderer = duplicate_renderer || self.requires_target_isolation(request);
         let normalized_defaults = crate::catalog::properties::normalize_renderer_user_properties(
             request.default_user_properties.clone(),
         );
