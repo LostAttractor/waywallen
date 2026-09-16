@@ -924,42 +924,30 @@ impl Router {
     ) {
         let (mut affected, isolated) = {
             let mut inner = self.inner.lock().await;
-            let affected = canvas_ids
+            let mut affected = canvas_ids
                 .into_iter()
                 .flat_map(|canvas_id| self.refresh_canvas_locked(&mut inner, &canvas_id))
                 .collect::<Vec<_>>();
-            // Removing a Canvas (or one of its members) creates independent
-            // targets. They must no longer share interactive renderer state.
+            // An earlier member recall may already have refreshed these
+            // projections before a later recall failed. Inspect the current
+            // assignments, not only links still carrying the old Canvas ID.
+            let renderer_ids = inner.renderer_slots.keys().cloned().collect::<Vec<_>>();
             let mut isolated = Vec::new();
-            for display_id in &affected {
-                for link in inner.table.links_for_display(*display_id) {
-                    if link.projection != LinkProjection::Independent {
-                        continue;
-                    }
-                    let renderer_id = self.renderer_for_target_locked(
-                        &mut inner,
-                        link.renderer_id.clone(),
-                        WallpaperPresentationTarget::Display(*display_id),
-                    );
-                    if renderer_id != link.renderer_id {
-                        inner.table.add_link_with_enabled(
-                            renderer_id.clone(),
-                            *display_id,
-                            link.enabled,
-                        );
-                        if let Some(display) = inner.displays.get(display_id) {
-                            display.invalidate_consumption();
-                        }
-                        isolated.push((renderer_id, *display_id));
-                    }
+            for renderer_id in renderer_ids {
+                for target in self.isolate_renderer_targets_locked(&mut inner, &renderer_id) {
+                    affected.extend(target.display_ids.iter().copied());
+                    isolated.push(target);
                 }
             }
             (affected, isolated)
         };
         affected.sort_unstable();
         affected.dedup();
-        for (renderer_id, display_id) in &isolated {
-            self.sync_display(*display_id).await;
+        for target in &isolated {
+            for display_id in &target.display_ids {
+                self.sync_display(*display_id).await;
+            }
+            let renderer_id = &target.renderer_id;
             if let Err(error) = self
                 .request_renderer_start(renderer_id, RendererStartCause::DisplayReconnect)
                 .await
@@ -5488,6 +5476,104 @@ mod tests {
             );
         }
         assert_eq!(renderers.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn per_target_sharing_repairs_canvas_split_after_partial_recall() {
+        let settings = test_settings_store().await;
+        let member = CanvasRect {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let canvas = settings
+            .create_canvas(
+                crate::settings::CanvasDraft {
+                    name: "Three monitors".into(),
+                    members: ["a", "b", "c"]
+                        .into_iter()
+                        .map(|key| {
+                            (
+                                key.to_string(),
+                                crate::settings::CanvasMemberPrefs {
+                                    rect: member,
+                                    aspect_locked: true,
+                                },
+                            )
+                        })
+                        .collect(),
+                    layout: None,
+                },
+                &HashMap::new(),
+            )
+            .unwrap();
+        let router = Router::new(isolated_renderer_manager());
+        router.attach_settings(settings.clone());
+        router.inner.lock().await.manual_stopped = true;
+        let a = router.register_display(reg_iid("A", "a")).await;
+        let b = router.register_display(reg_iid("B", "b")).await;
+        let c = router.register_display(reg_iid("C", "c")).await;
+        let ids = vec![a.id, b.id, c.id];
+        let projections = ids
+            .iter()
+            .map(|id| {
+                (
+                    *id,
+                    LinkProjection::Canvas {
+                        canvas_id: canvas.canvas_id.clone(),
+                        extent: member,
+                        member,
+                        layout: settings.resolved_global_layout(),
+                    },
+                )
+            })
+            .collect();
+        router
+            .apply_assignment(isolated_assignment(vec![AssignmentTarget {
+                display_ids: ids.clone(),
+                projections,
+            }]))
+            .await
+            .unwrap();
+        assert_eq!(
+            assigned_renderer(&router, a.id).await,
+            assigned_renderer(&router, b.id).await
+        );
+
+        settings
+            .delete_canvas(&canvas.canvas_id, settings.canvas_revision())
+            .unwrap();
+        // CanvasDelete recalls members sequentially. A's successful apply
+        // refreshes the deleted Canvas and strips its ID from B/C's links.
+        router
+            .apply_assignment(isolated_assignment(assignment_targets(vec![a.id])))
+            .await
+            .unwrap();
+        for id in [b.id, c.id] {
+            assert_eq!(
+                router.inner.lock().await.table.links_for_display(id)[0].projection,
+                LinkProjection::Independent
+            );
+        }
+        assert_eq!(
+            assigned_renderer(&router, b.id).await,
+            assigned_renderer(&router, c.id).await
+        );
+
+        // B's recall can now fail (e.g. a deleted catalog entry), leaving C
+        // unprocessed. The final repair must inspect the current assignments.
+        router
+            .canvas_configs_changed([canvas.canvas_id.clone()])
+            .await;
+        let mut renderers = HashSet::new();
+        for id in &ids {
+            renderers.insert(assigned_renderer(&router, *id).await);
+        }
+        assert_eq!(renderers.len(), 3);
+        // Repeated notifications must not allocate more instances.
+        router.canvas_configs_changed([canvas.canvas_id]).await;
+        assert_eq!(router.snapshot_renderers().await.len(), 3);
     }
 
     #[tokio::test(start_paused = true)]
