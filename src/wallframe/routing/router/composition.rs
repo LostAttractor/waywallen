@@ -44,6 +44,11 @@ struct AssignmentCommit {
     cancelled_starts: Vec<RendererId>,
 }
 
+pub(super) struct IsolatedRenderer {
+    pub renderer_id: RendererId,
+    pub display_ids: Vec<DisplayId>,
+}
+
 impl Router {
     fn requires_target_isolation(
         &self,
@@ -103,6 +108,65 @@ impl Router {
             inner.renderer_manual_paused.insert(new_id.clone());
         }
         new_id
+    }
+
+    /// Recheck retained assignments against the current plugin policy just
+    /// before launch. Registry updates can make a formerly shared slot local.
+    pub(super) fn isolate_renderer_targets_locked(
+        &self,
+        inner: &mut Inner,
+        renderer_id: &str,
+    ) -> Vec<IsolatedRenderer> {
+        if !inner
+            .renderer_slots
+            .get(renderer_id)
+            .is_some_and(|slot| self.requires_target_isolation(&slot.spawn_request))
+        {
+            return Vec::new();
+        }
+        let mut targets: BTreeMap<WallpaperPresentationTarget, Vec<Link>> = BTreeMap::new();
+        for link in inner.table.links_for_renderer(renderer_id) {
+            let target = match &link.projection {
+                LinkProjection::Independent => {
+                    WallpaperPresentationTarget::Display(link.display_id)
+                }
+                LinkProjection::Canvas { canvas_id, .. } => {
+                    WallpaperPresentationTarget::Canvas(canvas_id.clone())
+                }
+            };
+            targets.entry(target).or_default().push(link);
+        }
+        if targets.len() <= 1 {
+            return Vec::new();
+        }
+        // Keep an active audience on the original slot. Other targets may be
+        // auto-stopped; their new slots should remain deferred until needed.
+        let keep = targets
+            .iter()
+            .find(|(_, links)| links.iter().any(|link| link.enabled))
+            .or_else(|| targets.first_key_value())
+            .map(|(target, _)| target.clone())
+            .unwrap();
+        let mut isolated = Vec::new();
+        for (target, links) in targets {
+            if target == keep {
+                continue;
+            }
+            let new_id = self.renderer_for_target_locked(inner, renderer_id.to_string(), target);
+            let mut display_ids = Vec::new();
+            for link in links {
+                inner.table.retarget_link(link.id, &new_id);
+                if let Some(display) = inner.displays.get(&link.display_id) {
+                    display.invalidate_consumption();
+                }
+                display_ids.push(link.display_id);
+            }
+            isolated.push(IsolatedRenderer {
+                renderer_id: new_id,
+                display_ids,
+            });
+        }
+        isolated
     }
 
     pub async fn wait_for_first_frame(

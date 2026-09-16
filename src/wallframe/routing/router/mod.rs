@@ -5274,6 +5274,94 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn per_target_sharing_is_rechecked_on_plugin_restart() {
+        let manager = Arc::new(RendererManager::new_default());
+        let router = Router::new(manager.clone());
+        add_stub_renderer(&manager, &router, "shared").await;
+        let first = router.register_display(reg("A", 1920, 1080)).await;
+        let second = router.register_display(reg("B", 1920, 1080)).await;
+        manager.replace_registry(isolated_renderer_manager().registry_snapshot());
+
+        // The fixture has no executable; both independent launch attempts
+        // should fail, rather than restarting a shared slot with two targets.
+        assert!(router
+            .restart_renderers_orderly(&["shared".into()], Duration::ZERO, Duration::ZERO)
+            .await
+            .is_err());
+        let a = assigned_renderer(&router, first.id).await;
+        let b = assigned_renderer(&router, second.id).await;
+        assert_ne!(a, b);
+        for id in [&a, &b] {
+            assert!(matches!(
+                router.snapshot_renderer(id).await.unwrap().state,
+                RendererLifecycleState::Failed { .. }
+            ));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn per_target_sharing_is_rechecked_when_a_pending_resume_fires() {
+        let manager = Arc::new(RendererManager::new_default());
+        let router = Router::new(manager.clone());
+        let first = router.register_display(reg("A", 1920, 1080)).await;
+        let second = router.register_display(reg("B", 1920, 1080)).await;
+        let stopped = router.register_display(reg("C", 1920, 1080)).await;
+        let mut slot = RendererSlot::retained(
+            isolated_assignment(Vec::new()).spawn_request,
+            "test-stub".into(),
+        );
+        slot.wallpaper_id = Some("86".into());
+        {
+            let mut inner = router.inner.lock().await;
+            inner.renderer_slots.insert("shared".into(), slot);
+            inner
+                .table
+                .add_link_with_enabled("shared".into(), first.id, true);
+            inner
+                .table
+                .add_link_with_enabled("shared".into(), second.id, true);
+            inner
+                .table
+                .add_link_with_enabled("shared".into(), stopped.id, false);
+        }
+        router
+            .request_renderer_start("shared", RendererStartCause::AutoReplayResume)
+            .await
+            .unwrap();
+        let token = router.inner.lock().await.renderer_slots["shared"]
+            .pending_start
+            .unwrap()
+            .token;
+        manager.replace_registry(isolated_renderer_manager().registry_snapshot());
+        tokio::time::advance(lifecycle::AUTO_REPLAY_START_DELAY).await;
+        router
+            .on_deadline_reached(deadline::DeadlineReached {
+                key: deadline::DeadlineKey::renderer_start("shared"),
+                token,
+            })
+            .await;
+
+        let mut ids = HashSet::new();
+        for display in [first.id, second.id, stopped.id] {
+            let id = assigned_renderer(&router, display).await;
+            let snapshot = router.snapshot_renderer(&id).await.unwrap();
+            if display == stopped.id {
+                assert!(matches!(
+                    snapshot.state,
+                    RendererLifecycleState::Stopped { keep: true, .. }
+                ));
+            } else {
+                assert!(matches!(
+                    snapshot.state,
+                    RendererLifecycleState::Failed { .. }
+                ));
+            }
+            ids.insert(id);
+        }
+        assert_eq!(ids.len(), 3);
+    }
+
+    #[tokio::test]
     async fn per_target_sharing_survives_hotplug_and_reconnect() {
         let router = Router::new(isolated_renderer_manager());
         let first = router.register_display(reg_iid("A", "display-a")).await;
