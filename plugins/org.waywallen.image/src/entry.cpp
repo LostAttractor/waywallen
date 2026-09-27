@@ -615,6 +615,10 @@ void reader_loop(HostState& host) {
 // --print-caps
 // ---------------------------------------------------------------------------
 
+// Standalone probes run before decoding and have no content extent.
+constexpr uint32_t kProbeWidth  = 1920;
+constexpr uint32_t kProbeHeight = 1080;
+
 // Emit a single JSON document on stdout that mirrors the
 // `PeerCapsJson` shape consumed by `dmabuf_roundtrip_e2e`. Keep the
 // field names and ordering in sync with
@@ -624,9 +628,9 @@ void reader_loop(HostState& host) {
 // the bridge pool; instead we build a Vulkan pool, hand it one end of
 // a `socketpair(AF_UNIX)`, ask it to advertise, then drain the
 // `format_caps` message on the other end and decode it.
-static int print_caps_json(const Options& opt) {
+static int print_caps_json() {
     auto producer_res =
-        wavsen::video::Producer::create(rstd::u32(opt.width), rstd::u32(opt.height));
+        wavsen::video::Producer::create(rstd::u32(kProbeWidth), rstd::u32(kProbeHeight));
     if (producer_res.is_err()) {
         rstd_error("waywallen-image-renderer: vk_producer: {}",
                    std::move(producer_res).unwrap_err().message.as_str());
@@ -680,8 +684,8 @@ static int print_caps_json(const Options& opt) {
 
     if (int rc = ww_bridge_pool_advertise_caps(pool,
                                                sv[0],
-                                               opt.width,
-                                               opt.height,
+                                               kProbeWidth,
+                                               kProbeHeight,
                                                WW_MEM_HINT_DEVICE_LOCAL | WW_MEM_HINT_HOST_VISIBLE);
         rc != 0) {
         rstd_error("waywallen-image-renderer: advertise_caps: {}", rc);
@@ -794,12 +798,12 @@ int run(int argc, char** argv) {
     Options opt = std::move(parsed_args.options);
 
     if (opt.print_caps) {
-        return print_caps_json(opt);
+        return print_caps_json();
     }
 
     if (opt.vulkan_probe) {
         auto prod_res =
-            wavsen::video::Producer::create(rstd::u32(opt.width), rstd::u32(opt.height));
+            wavsen::video::Producer::create(rstd::u32(kProbeWidth), rstd::u32(kProbeHeight));
         if (prod_res.is_err()) {
             rstd_error("waywallen-image-renderer: vk_producer: {}",
                        std::move(prod_res).unwrap_err().message.as_str());
