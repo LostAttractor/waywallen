@@ -854,6 +854,14 @@ message DisplayInfo {
   bool selectable_target = 20;
   bool manual_paused = 21;
   bool effective_paused = 22;
+  WindowExclusionSupport window_exclusion_support = 23;
+  uint32 unsupported_window_exclusions = 24;
+}
+
+enum WindowExclusionSupport {
+  WINDOW_EXCLUSION_SUPPORT_LEGACY = 0;
+  WINDOW_EXCLUSION_SUPPORT_SUPPORTED = 1;
+  WINDOW_EXCLUSION_SUPPORT_PARTIAL = 2;
 }
 
 message CanvasRect {
@@ -1656,6 +1664,13 @@ enum AutoScope {
   AUTO_SCOPE_ALL_DISPLAYS = 1;
 }
 
+message WindowExclusions {
+  repeated string application_ids = 1;
+  repeated string titles = 2;
+  repeated string application_id_patterns = 3;
+  repeated string title_patterns = 4;
+}
+
 message AutoReplayPolicy {
   reserved 1, 2, 3;
   AutoAction any_window = 10;
@@ -1670,6 +1685,7 @@ message AutoReplayPolicy {
   AutoScope maximized_scope = 19;
   AutoScope fullscreen_scope = 20;
   AutoAction gamemode = 21;
+  WindowExclusions window_exclusions = 22;
 }
 
 enum PauseEffectKind {

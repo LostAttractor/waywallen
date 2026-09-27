@@ -345,6 +345,14 @@ pub(super) fn display_snapshot_to_pb(
         canvas_rect: s.canvas_rect.map(canvas_rect_to_pb),
         canvas_overlap_count: s.canvas_overlap_count,
         selectable_target: s.selectable_target,
+        window_exclusion_support: if s.window_observation_caps.is_none() {
+            pb::WindowExclusionSupport::Legacy
+        } else if s.unsupported_window_exclusions != 0 {
+            pb::WindowExclusionSupport::Partial
+        } else {
+            pb::WindowExclusionSupport::Supported
+        } as i32,
+        unsupported_window_exclusions: s.unsupported_window_exclusions,
     }
 }
 
@@ -597,6 +605,12 @@ pub(super) fn auto_action_from_pb(v: i32) -> crate::settings::AutoAction {
 
 pub(super) fn auto_replay_to_pb(p: &crate::settings::AutoReplayPolicy) -> pb::AutoReplayPolicy {
     pb::AutoReplayPolicy {
+        window_exclusions: Some(pb::WindowExclusions {
+            application_ids: p.window_exclusions.application_ids.clone(),
+            titles: p.window_exclusions.titles.clone(),
+            application_id_patterns: p.window_exclusions.application_id_patterns.clone(),
+            title_patterns: p.window_exclusions.title_patterns.clone(),
+        }),
         any_window_scope: p.scope_for(crate::settings::AutoCondition::AnyWindow) as i32,
         focused_scope: p.scope_for(crate::settings::AutoCondition::Focused) as i32,
         maximized_scope: p.scope_for(crate::settings::AutoCondition::Maximized) as i32,
@@ -645,6 +659,16 @@ pub(super) fn auto_replay_from_pb(
         }
     };
     let mut policy = crate::settings::AutoReplayPolicy {
+        window_exclusions: p
+            .window_exclusions
+            .as_ref()
+            .map(|rules| crate::settings::WindowExclusions {
+                application_ids: rules.application_ids.clone(),
+                titles: rules.titles.clone(),
+                application_id_patterns: rules.application_id_patterns.clone(),
+                title_patterns: rules.title_patterns.clone(),
+            })
+            .unwrap_or_default(),
         any_window_scope: scope(p.any_window_scope),
         focused_scope: scope(p.focused_scope),
         maximized_scope: scope(p.maximized_scope),
@@ -1285,6 +1309,25 @@ pub(super) fn global_event_to_pb(e: &GlobalEvent, state: &Arc<DaemonContext>) ->
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn window_exclusions_protobuf_roundtrip() {
+        let mut policy = crate::settings::AutoReplayPolicy::default();
+        policy.window_exclusions.application_ids = vec!["cat".into(), "cat".into(), String::new()];
+        policy.window_exclusions.titles = vec!["猫".into()];
+        policy.window_exclusions.application_id_patterns = vec!["cat*".into()];
+        policy.window_exclusions.title_patterns = vec!["猫?".into()];
+        let normalized = auto_replay_from_pb(&auto_replay_to_pb(&policy)).unwrap();
+        assert_eq!(normalized.window_exclusions.application_ids, ["cat"]);
+        assert_eq!(normalized.window_exclusions.titles, ["猫"]);
+        assert_eq!(
+            normalized.window_exclusions.application_id_patterns,
+            ["cat*"]
+        );
+        assert_eq!(normalized.window_exclusions.title_patterns, ["猫?"]);
+        policy.window_exclusions.titles = vec!["猫".repeat(86)];
+        assert!(auto_replay_from_pb(&auto_replay_to_pb(&policy)).is_err());
+    }
 
     #[test]
     fn gpu_info_mapping_keeps_name_and_description() {

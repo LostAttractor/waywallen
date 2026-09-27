@@ -219,6 +219,7 @@ using proto::SettingsGetRequest;
 using proto::SettingsGetResponse;
 using proto::SettingsSetRequest;
 using proto::TransitionConfig;
+using proto::WindowExclusions;
 using proto::AlignGadget::Align;
 using proto::AutoActionGadget::AutoAction;
 using proto::AutoScopeGadget::AutoScope;

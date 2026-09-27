@@ -1,6 +1,57 @@
 use super::*;
 
 #[test]
+fn window_exclusions_normalize_validate_and_roundtrip() {
+    let rules: WindowExclusions =
+        toml::from_str("application_ids = ['cat', '', 'cat']\ntitles = ['猫']").unwrap();
+    assert_eq!(rules.application_ids, ["cat"]);
+    assert!(rules.application_id_patterns.is_empty());
+    assert!(rules.title_patterns.is_empty());
+    assert_eq!(
+        toml::from_str::<WindowExclusions>(&toml::to_string(&rules).unwrap()).unwrap(),
+        rules
+    );
+    assert!(
+        toml::from_str::<WindowExclusions>(&format!("titles = ['{}']", "猫".repeat(86))).is_err()
+    );
+    let too_many = WindowExclusions {
+        application_ids: (0..65).map(|i| i.to_string()).collect(),
+        ..Default::default()
+    };
+    assert!(too_many.validate().is_err());
+    assert!(toml::from_str::<WindowExclusions>(&toml::to_string(&too_many).unwrap()).is_err());
+    assert!(WindowExclusions {
+        titles: vec!["a\0b".into()],
+        ..Default::default()
+    }
+    .validate()
+    .is_err());
+}
+
+#[test]
+fn window_exclusions_patterns_preserve_exact_and_share_limits() {
+    let rules: WindowExclusions = toml::from_str(
+        "application_ids = ['cat*']\napplication_id_patterns = ['cat*', '', 'cat*']\ntitle_patterns = ['时钟?']"
+    ).unwrap();
+    assert_eq!(rules.application_ids, ["cat*"]);
+    assert_eq!(rules.application_id_patterns, ["cat*"]);
+    assert_eq!(rules.title_patterns, ["时钟?"]);
+    assert_eq!(
+        toml::from_str::<WindowExclusions>(&toml::to_string(&rules).unwrap()).unwrap(),
+        rules
+    );
+    let mut combined = rules;
+    combined.application_ids = (0..64).map(|i| i.to_string()).collect();
+    assert!(combined.validate().is_err());
+    combined.application_ids.pop();
+    assert!(combined.validate().is_ok());
+    combined.title_patterns = vec!["a\0b".into()];
+    assert!(combined.validate().is_err());
+    combined.title_patterns = vec!["猫".repeat(86)];
+    assert!(combined.validate().is_err());
+}
+
+#[test]
 fn default_roundtrip() {
     let s: Settings = toml::from_str("").unwrap();
     assert!(s.global.last_wallpaper.is_none());
@@ -686,7 +737,7 @@ fn auto_replay_migrates_legacy_rules_once_and_round_trips_scopes() {
     assert_eq!(policy.any_window_scope, AutoScope::AllDisplays);
     assert_eq!(policy.focused_scope, AutoScope::AllDisplays);
     assert_eq!(policy.fullscreen_scope, AutoScope::CurrentDisplay);
-    let display = settings.displays["A"].auto_replay.unwrap();
+    let display = settings.displays["A"].auto_replay.as_ref().unwrap();
     assert_eq!(display.focused, AutoAction::Pause);
     assert_eq!(display.focused_scope, AutoScope::AllDisplays);
     assert_eq!(display.session_locked, policy.session_locked);

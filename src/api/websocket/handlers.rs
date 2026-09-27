@@ -1923,7 +1923,7 @@ pub(super) async fn dispatch_inner(
             let previous_settings = state.settings.snapshot();
             let previous_filter = previous_settings.global.wallpaper_filter.clone();
             let prev_layout = previous_settings.global.layout.clone();
-            let prev_auto_replay = previous_settings.global.auto_replay;
+            let prev_auto_replay = previous_settings.global.auto_replay.clone();
             let prev_pause_effect = previous_settings.global.pause_effect;
             let prev_transition = previous_settings.global.transition;
             let prev_queue_mode = previous_settings.global.queue_mode.clone();

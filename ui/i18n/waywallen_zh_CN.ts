@@ -1652,7 +1652,29 @@ Related display: #%1</source>
     </message>
 </context>
 <context>
+    <name>ApplyTextField</name>
+    <message>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+</context>
+<context>
+    <name>WindowExclusionsPage</name>
+    <message><source>Type</source><translation>类型</translation></message>
+    <message><source>New exclusion</source><translation>新增排除规则</translation></message>
+    <message><source>Exclusions</source><translation>排除规则</translation></message>
+    <message><source>Remove</source><translation>移除</translation></message>
+    <message><source>No excluded windows</source><translation>暂无排除的窗口</translation></message>
+    <message><source>Excluded windows</source><translation>排除的窗口</translation></message>
+    <message><source>Add</source><translation>添加</translation></message>
+    <message><source>Application ID</source><translation>应用 ID</translation></message>
+    <message><source>Window title</source><translation>窗口标题</translation></message>
+    <message><source>Matching is case-sensitive. Wildcards: * matches any number of characters, ? matches one character. Other characters are literal.</source><translation>匹配区分大小写。通配符 * 匹配任意数量的字符，? 匹配一个字符，其他字符按字面匹配。</translation></message>
+    <message><source>%1 cannot apply all window exclusions. Update its display client or use supported rule types.</source><translation>%1 无法应用全部窗口排除规则。请更新其显示客户端或使用受支持的规则类型。</translation></message>
+</context>
+<context>
     <name>SettingsPage</name>
+    <message><source>Excluded windows</source><translation>排除的窗口</translation></message>
     <message><source>Current display</source><translation>当前显示器</translation></message>
     <message><source>All displays</source><translation>所有显示器</translation></message>
     <message><source>Applies to</source><translation>作用范围</translation></message>

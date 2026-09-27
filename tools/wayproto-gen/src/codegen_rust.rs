@@ -12,6 +12,9 @@ pub fn emit(p: &Protocol) -> String {
     emit_consts(&mut out, p, in_mod);
     emit_common_types(&mut out);
     emit_wire_helpers(&mut out);
+    if p.structs.iter().any(|s| s.tagged) || p.requests.iter().chain(&p.events).any(|m| m.tagged) {
+        out.push_str(include_str!("tagged_rust.inc"));
+    }
     emit_named_enums(&mut out, &p.enums);
     emit_named_structs(&mut out, &p.structs);
     emit_enum(&mut out, in_enum, &p.requests, in_mod);
@@ -176,7 +179,7 @@ fn emit_wire_helpers(out: &mut String) {
     impl<'a> R<'a> {
         pub fn new(buf: &'a [u8]) -> Self { Self { buf, pos: 0 } }
         pub fn at_end(&self) -> bool { self.pos == self.buf.len() }
-        fn take(&mut self, n: usize) -> Result<&'a [u8], DecodeError> {
+        pub(super) fn take(&mut self, n: usize) -> Result<&'a [u8], DecodeError> {
             if self.buf.len() - self.pos < n { return Err(DecodeError::TooShort); }
             let out = &self.buf[self.pos..self.pos + n];
             self.pos += n;
@@ -282,6 +285,20 @@ fn emit_wire_helpers(out: &mut String) {
 fn emit_named_enums(out: &mut String, enums: &[NamedEnum]) {
     for item in enums {
         let type_name = snake_to_camel(&item.name);
+        if item.open {
+            writeln!(out, "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct {type_name}(pub u32);\n#[allow(non_upper_case_globals)]\nimpl {type_name} {{").unwrap();
+            for entry in &item.entries {
+                writeln!(
+                    out,
+                    "    pub const {}: Self = Self({});",
+                    snake_to_camel(&entry.name),
+                    entry.value
+                )
+                .unwrap();
+            }
+            writeln!(out, "    fn encode_wire(&self, buf: &mut Vec<u8>) {{ wire::w_u32(buf, self.0); }}\n    fn decode_wire(r: &mut wire::R<'_>) -> Result<Self, DecodeError> {{ Ok(Self(r.u32()?)) }}\n}}\n").unwrap();
+            continue;
+        }
         writeln!(out, "#[repr(u32)]").unwrap();
         writeln!(out, "#[derive(Debug, Clone, Copy, PartialEq, Eq)]").unwrap();
         writeln!(out, "pub enum {type_name} {{").unwrap();
@@ -332,6 +349,11 @@ fn emit_named_structs(out: &mut String, structs: &[NamedStruct]) {
     let mut copy_structs = HashMap::new();
     for item in structs {
         let type_name = snake_to_camel(&item.name);
+        if item.tagged {
+            crate::tagged::rust_struct(out, item);
+            copy_structs.insert(item.name.clone(), false);
+            continue;
+        }
         let is_copy = item
             .fields
             .iter()
@@ -420,7 +442,11 @@ fn emit_enum(out: &mut String, enum_name: &str, msgs: &[Message], opcode_mod: &s
                     out,
                     "        {}: {},",
                     field_name(&a.name),
-                    rust_type(&a.ty)
+                    if a.optional {
+                        format!("Option<{}>", rust_type(&a.ty))
+                    } else {
+                        rust_type(&a.ty)
+                    }
                 )
                 .unwrap();
             }
@@ -517,7 +543,15 @@ fn emit_enum(out: &mut String, enum_name: &str, msgs: &[Message], opcode_mod: &s
     for m in msgs {
         let variant = snake_to_camel(&m.name);
         if m.args.is_empty() {
-            writeln!(out, "            Self::{variant} => {{}}").unwrap();
+            if m.tagged {
+                writeln!(
+                    out,
+                    "            Self::{variant} => tagged::encode(buf, Vec::new()),"
+                )
+                .unwrap();
+            } else {
+                writeln!(out, "            Self::{variant} => {{}}").unwrap();
+            }
             continue;
         }
         let bindings: Vec<String> = m.args.iter().map(|a| field_name(&a.name)).collect();
@@ -527,8 +561,12 @@ fn emit_enum(out: &mut String, enum_name: &str, msgs: &[Message], opcode_mod: &s
             bindings.join(", ")
         )
         .unwrap();
-        for a in &m.args {
-            emit_encode_arg(out, "                ", &field_name(&a.name), &a.ty);
+        if m.tagged {
+            crate::tagged::rust_encode(out, &m.args, "", "                ");
+        } else {
+            for a in &m.args {
+                emit_encode_arg(out, "                ", &field_name(&a.name), &a.ty);
+            }
         }
         writeln!(out, "            }}").unwrap();
     }
@@ -553,16 +591,23 @@ fn emit_enum(out: &mut String, enum_name: &str, msgs: &[Message], opcode_mod: &s
         )
         .unwrap();
         if m.args.is_empty() {
+            if m.tagged {
+                writeln!(out, "                tagged::Fields::decode(&mut reader)?;").unwrap();
+            }
             writeln!(out, "                Self::{variant}").unwrap();
         } else {
-            for a in &m.args {
-                emit_decode_arg(
-                    out,
-                    "                ",
-                    &field_name(&a.name),
-                    &a.ty,
-                    "&mut reader",
-                );
+            if m.tagged {
+                crate::tagged::rust_decode(out, &m.args, "&mut reader", "                ");
+            } else {
+                for a in &m.args {
+                    emit_decode_arg(
+                        out,
+                        "                ",
+                        &field_name(&a.name),
+                        &a.ty,
+                        "&mut reader",
+                    );
+                }
             }
             writeln!(out, "                Self::{variant} {{").unwrap();
             for a in &m.args {
@@ -590,7 +635,7 @@ fn emit_enum(out: &mut String, enum_name: &str, msgs: &[Message], opcode_mod: &s
     writeln!(out).unwrap();
 }
 
-fn emit_encode_arg(out: &mut String, indent: &str, name: &str, ty: &ArgType) {
+pub(crate) fn emit_encode_arg(out: &mut String, indent: &str, name: &str, ty: &ArgType) {
     match ty {
         ArgType::Bool => writeln!(out, "{indent}wire::w_bool(buf, *{name});").unwrap(),
         ArgType::U32 => writeln!(out, "{indent}wire::w_u32(buf, *{name});").unwrap(),
@@ -612,7 +657,13 @@ fn emit_encode_arg(out: &mut String, indent: &str, name: &str, ty: &ArgType) {
     }
 }
 
-fn emit_decode_arg(out: &mut String, indent: &str, name: &str, ty: &ArgType, reader: &str) {
+pub(crate) fn emit_decode_arg(
+    out: &mut String,
+    indent: &str,
+    name: &str,
+    ty: &ArgType,
+    reader: &str,
+) {
     let expr = match ty {
         ArgType::Bool => format!("({reader}).bool()?"),
         ArgType::U32 => format!("({reader}).u32()?"),
@@ -664,7 +715,7 @@ fn type_is_copy(ty: &ArgType, copy_structs: &HashMap<String, bool>) -> bool {
     }
 }
 
-fn rust_type(ty: &ArgType) -> String {
+pub(crate) fn rust_type(ty: &ArgType) -> String {
     match ty {
         ArgType::Bool => "bool".into(),
         ArgType::U32 => "u32".into(),
@@ -681,7 +732,7 @@ fn rust_type(ty: &ArgType) -> String {
     }
 }
 
-fn snake_to_camel(s: &str) -> String {
+pub(crate) fn snake_to_camel(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut upper = true;
     for c in s.chars() {
@@ -700,7 +751,7 @@ fn snake_to_camel(s: &str) -> String {
 }
 
 // Rust reserved keywords that might collide with protocol arg names.
-fn field_name(raw: &str) -> String {
+pub(crate) fn field_name(raw: &str) -> String {
     match raw {
         "type" | "ref" | "move" | "match" | "self" | "super" | "where" | "box" => {
             format!("r#{raw}")

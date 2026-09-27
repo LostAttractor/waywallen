@@ -14,8 +14,19 @@
 
   Wire format:
     header = u16 opcode + u16 total byte length, little-endian.
-    body   = positional, 4-byte aligned values generated from this schema.
+    body   = positional unless explicitly marked encoding="tagged".
     fds    = SCM_RIGHTS ancillary data in the order documented per event.
+
+  Tagged revision 1 (no fds):
+    body = u32 revision + u32 payload bytes + fields.
+    field = u32 tag + u32 wire type + u32 value bytes + aligned value.
+    Tags are nonzero, unique, immutable and encoded in ascending order.
+    Unknown tags are skipped. Known tags require the declared wire type.
+    Nested structs are tagged. Missing optional fields remain absent.
+    Limits: 256 fields, 65520 payload bytes, 1024 array entries, 4096 UTF-8
+    bytes per string. Strings exclude interior NUL; padding must be zero.
+    Unknown revisions are skipped; only all-optional proposals may omit
+    their payload this way. Existing positional messages remain strict.
 
   Connection contract:
     - `hello` is the first request and `welcome` is the first reply.
@@ -26,6 +37,8 @@
       includes the accepted version range in that error.
     - `register_display` is sent exactly once after `welcome` and contains
       every consumer-owned fact required for initial routing.
+    - An extended client may send one tagged `client_capabilities` between
+      welcome and registration. Absence preserves the legacy v9 path.
     - `display_accepted` is the first event after registration. Its
       presentation snapshot reflects the fully reconciled initial state.
     - Backends and consumer capabilities are immutable for a connection;
@@ -38,6 +51,10 @@
     - frame seq is connection-local and strictly increasing across binds.
     - presentation config/state generations are connection-local; a state
       names the config generation it was resolved against.
+    - Window observation generation is connection-local; 0 means the initial
+      empty config. Reports older than the desired config are ignored, future
+      reports are rejected. Until a matching report arrives, retain the last
+      confirmed facts (or no window contribution on initial nonempty config).
 
   Buffer/release contract:
     - `bind_buffers` atomically carries one pool and its initial composition.
@@ -122,6 +139,24 @@
     <field name="refresh_mhz" type="u32"/>
   </struct>
 
+  <!-- Optional v9 extensions use revision 1 tagged bodies. Fields carry
+       u32 tag, type and byte length; nested bodies are length-delimited.
+       Existing positional messages retain their original wire layout. -->
+  <struct name="window_observation_capabilities" encoding="tagged">
+    <!-- bits 0/1: exact application ID/title; bits 2/3: application ID/title
+         patterns. Patterns use only * and ?, match the whole string, are
+         case-sensitive and have no escape syntax. -->
+    <field name="flags" type="u32" tag="1"/>
+  </struct>
+
+  <struct name="window_observation_config" encoding="tagged">
+    <field name="generation" type="u64" tag="1"/>
+    <field name="excluded_application_ids" type="array" element="string" tag="2"/>
+    <field name="excluded_titles" type="array" element="string" tag="3"/>
+    <field name="excluded_application_id_patterns" type="array" element="string" tag="4" optional="true"/>
+    <field name="excluded_title_patterns" type="array" element="string" tag="5" optional="true"/>
+  </struct>
+
   <!--
     Flattened consumer DMA-BUF capabilities. The parallel arrays obey:
       mod_counts.len == fourccs.len
@@ -149,6 +184,8 @@
 
   <struct name="presentation_capabilities">
     <!--
+      Deprecated: use client_capabilities.pause_effect and .transition.
+      Retained only for legacy v9 registration; new clients send zero.
       bit 0 = Pause Blur
       bit 1 = Fade Transition
       bit 2 = Wipe Transition
@@ -156,6 +193,16 @@
       All other bits are reserved and must be zero.
     -->
     <field name="flags" type="u32"/>
+  </struct>
+
+  <struct name="pause_effect_capabilities" encoding="tagged">
+    <!-- bit 0: blur. Unknown bits are ignored. -->
+    <field name="flags" type="u32" tag="1"/>
+  </struct>
+
+  <struct name="transition_capabilities" encoding="tagged">
+    <!-- bits 0/1/2: fade/wipe/grow. Unknown bits are ignored. -->
+    <field name="flags" type="u32" tag="1"/>
   </struct>
 
   <struct name="blur_effect_config">
@@ -174,7 +221,8 @@
   <!--
     Animation used when a bind replaces the presented wallpaper content.
     The daemon only names a kind the consumer declared in
-    presentation_capabilities; every field carries a valid value even when
+    transition_capabilities (or legacy presentation_capabilities);
+    every field carries a valid value even when
     kind is none.
       duration_ms: 100..=10000.
       angle: wipe direction in degrees, 0..=359, clockwise in surface
@@ -307,6 +355,21 @@
     <arg name="seq" type="u64"/>
   </request>
 
+  <!-- Sent at most once after welcome, before register_display. Absence
+       selects the legacy v9 path. Only declared extensions receive events. -->
+  <request name="client_capabilities" opcode="14" encoding="tagged">
+    <arg name="window_observation" type="window_observation_capabilities" tag="1" optional="true"/>
+    <!-- Each field independently overrides its legacy registration bits,
+         including an explicit zero. Absence uses the legacy bits. -->
+    <arg name="pause_effect" type="pause_effect_capabilities" tag="2" optional="true"/>
+    <arg name="transition" type="transition_capabilities" tag="3" optional="true"/>
+  </request>
+
+  <request name="set_window_observation_state" opcode="15" encoding="tagged">
+    <arg name="config_generation" type="u64" tag="1"/>
+    <arg name="flags" type="u32" tag="2"/>
+  </request>
+
   <!-- ==================================================================
        EVENTS  (daemon -> display)
        ================================================================== -->
@@ -382,6 +445,12 @@
   <!-- Complete runtime presentation state replacement. -->
   <event name="set_presentation_state" opcode="9">
     <arg name="state" type="presentation_state"/>
+  </event>
+
+  <!-- Follows display_accepted for clients declaring window observation.
+       Complete replacement; reply immediately even when flags do not change. -->
+  <event name="set_window_observation_config" opcode="10" encoding="tagged">
+    <arg name="config" type="window_observation_config" tag="1"/>
   </event>
 
 </protocol>

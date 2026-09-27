@@ -392,12 +392,12 @@ impl SettingsStore {
         if let Some(policy) = g
             .displays
             .get(display_name)
-            .and_then(|prefs| prefs.auto_replay)
+            .and_then(|prefs| prefs.auto_replay.clone())
         {
             return policy;
         }
         if let Some(policy) = &g.global.auto_replay {
-            return *policy;
+            return policy.clone();
         }
         AutoReplayPolicy::default()
     }

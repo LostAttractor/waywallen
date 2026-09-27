@@ -68,7 +68,7 @@ impl State {
 
     pub fn update(
         &mut self,
-        policy: AutoReplayPolicy,
+        policy: &AutoReplayPolicy,
         facts: Facts,
         global: bool,
         now: Instant,
@@ -164,7 +164,7 @@ mod tests {
         };
         let mut state = State::new();
         state.update(
-            policy,
+            &policy,
             facts(FLAG_ACTIVE | FLAG_FULLSCREEN),
             false,
             Instant::now(),
@@ -189,7 +189,7 @@ mod tests {
         let mut state = State::new();
         let mut input = facts(FLAG_FULLSCREEN);
         input.session_locked = true;
-        state.update(policy, input, false, Instant::now(), false);
+        state.update(&policy, input, false, Instant::now(), false);
         assert_eq!(
             state.effects(),
             Effects {
@@ -197,7 +197,7 @@ mod tests {
                 ..Default::default()
             }
         );
-        state.update(policy, input, true, Instant::now(), true);
+        state.update(&policy, input, true, Instant::now(), true);
         assert_eq!(
             state.effects(),
             Effects {
@@ -217,10 +217,10 @@ mod tests {
         let mut input = facts(0);
         input.gamemode = true;
 
-        state.update(policy, input, false, Instant::now(), false);
+        state.update(&policy, input, false, Instant::now(), false);
         assert_eq!(state.effects(), Effects::default());
 
-        state.update(policy, input, true, Instant::now(), true);
+        state.update(&policy, input, true, Instant::now(), true);
         assert_eq!(
             state.effects(),
             Effects {
@@ -240,19 +240,19 @@ mod tests {
         let mut state = State::new();
         let now = Instant::now();
         state.update(
-            policy,
+            &policy,
             facts(FLAG_ACTIVE | FLAG_FULLSCREEN),
             false,
             now,
             false,
         );
-        state.update(policy, facts(FLAG_ACTIVE), false, now, false);
+        state.update(&policy, facts(FLAG_ACTIVE), false, now, false);
         assert!(state.effects().pause && state.effects().mute);
         let later = now + std::time::Duration::from_millis(100);
-        state.update(policy, facts(FLAG_ACTIVE), false, later, false);
+        state.update(&policy, facts(FLAG_ACTIVE), false, later, false);
         assert!(!state.effects().pause && state.effects().mute);
-        state.update(policy, facts(0), false, later, false);
-        state.update(policy, facts(FLAG_ACTIVE), false, later, false);
+        state.update(&policy, facts(0), false, later, false);
+        state.update(&policy, facts(FLAG_ACTIVE), false, later, false);
         assert!(state.next_deadline().is_none());
         assert!(state.effects().mute);
     }
@@ -267,13 +267,13 @@ mod tests {
             ..Default::default()
         };
         let now = Instant::now();
-        state.update(policy, facts(FLAG_FULLSCREEN), false, now, false);
+        state.update(&policy, facts(FLAG_FULLSCREEN), false, now, false);
         assert!(state.effects().stop_local);
         assert!(!state.effects().stop);
-        state.update(policy, facts(0), false, now, false);
+        state.update(&policy, facts(0), false, now, false);
         assert!(state.effects().stop_local);
         state.update(
-            policy,
+            &policy,
             facts(0),
             false,
             now + std::time::Duration::from_millis(100),
@@ -287,7 +287,7 @@ mod tests {
         let mut state = State::new();
         let now = Instant::now();
         state.update(
-            AutoReplayPolicy::default(),
+            &AutoReplayPolicy::default(),
             facts(FLAG_FULLSCREEN),
             false,
             now,
@@ -297,7 +297,7 @@ mod tests {
             fullscreen: AutoAction::None,
             ..Default::default()
         };
-        state.update(policy, facts(FLAG_FULLSCREEN), false, now, true);
+        state.update(&policy, facts(FLAG_FULLSCREEN), false, now, true);
         assert_eq!(state.effects(), Effects::default());
         assert!(state.next_deadline().is_none());
     }

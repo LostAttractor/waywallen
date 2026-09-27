@@ -1,6 +1,32 @@
 use super::*;
 
 impl Router {
+    pub async fn update_window_observation(
+        self: &Arc<Self>,
+        display_id: DisplayId,
+        generation: u64,
+        flags: u32,
+    ) -> Result<(), &'static str> {
+        {
+            let mut inner = self.inner.lock().await;
+            let state = inner
+                .displays
+                .get_mut(&display_id)
+                .ok_or("display is disconnected")?;
+            let rules = self.resolved_auto_replay(&state.info).window_exclusions;
+            if let Some(config) = state.window_observation.reconcile(&rules) {
+                let _ = state
+                    .tx
+                    .send(DisplayOutEvent::SetWindowObservationConfig(config));
+            }
+            if !state.window_observation.accept(generation)? {
+                return Ok(());
+            }
+            state.auto_replay.last_flags = flags;
+        }
+        self.refresh_auto_policy(false).await;
+        Ok(())
+    }
     pub async fn update_session_state(
         self: &Arc<Self>,
         locked: Option<bool>,
@@ -24,6 +50,7 @@ impl Router {
     }
 
     pub(super) async fn refresh_auto_policy(self: &Arc<Self>, reset: bool) {
+        let mut support_changed = false;
         let changed = {
             let mut inner = self.inner.lock().await;
             let now = tokio::time::Instant::now();
@@ -40,13 +67,30 @@ impl Router {
             };
             inner
                 .global_auto_replay
-                .update(global, facts, true, now, reset);
+                .update(&global, facts, true, now, reset);
             self.schedule_auto_resume(auto_replay::Source::Global, &inner.global_auto_replay);
             let mut effects = inner.global_auto_replay.effects();
             for (&id, state) in &mut inner.displays {
                 let policy = self.resolved_auto_replay(&state.info);
+                let previous_unsupported = state.window_observation.unsupported;
+                if let Some(config) = state
+                    .window_observation
+                    .reconcile(&policy.window_exclusions)
+                {
+                    let _ = state
+                        .tx
+                        .send(DisplayOutEvent::SetWindowObservationConfig(config));
+                }
+                if state.window_observation.unsupported != previous_unsupported
+                    && state.window_observation.unsupported != 0
+                {
+                    log::warn!(
+                        "display {id}: window exclusions are not fully supported by this client"
+                    );
+                }
+                support_changed |= state.window_observation.unsupported != previous_unsupported;
                 state.auto_replay.update(
-                    policy,
+                    &policy,
                     auto_replay::Facts {
                         flags: state.auto_replay.last_flags,
                         ..facts
@@ -79,6 +123,9 @@ impl Router {
         };
         if changed {
             self.reconcile_lifecycle().await;
+        }
+        if support_changed {
+            self.emit(RouterEvent::DisplaysReplace(self.snapshot_displays().await));
         }
     }
 

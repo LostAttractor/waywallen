@@ -62,12 +62,14 @@ impl ArgType {
 pub struct NamedStruct {
     pub name: String,
     pub fields: Vec<Arg>,
+    pub tagged: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct NamedEnum {
     pub name: String,
     pub entries: Vec<EnumEntry>,
+    pub open: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +82,8 @@ pub struct EnumEntry {
 pub struct Arg {
     pub name: String,
     pub ty: ArgType,
+    pub tag: Option<u32>,
+    pub optional: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +100,7 @@ pub struct Message {
     pub opcode: u16,
     pub args: Vec<Arg>,
     pub fds: FdSpec,
+    pub tagged: bool,
 }
 
 /// Naming style for the daemon-to-peer direction.
@@ -231,6 +236,33 @@ pub fn parse_protocol(src: &str) -> Result<Protocol, ParseError> {
 
     validate_fd_paths(&requests, &structs)?;
     validate_fd_paths(&events, &structs)?;
+    for fields in structs
+        .iter()
+        .filter(|item| item.tagged)
+        .map(|item| &item.fields)
+        .chain(
+            requests
+                .iter()
+                .chain(&events)
+                .filter(|item| item.tagged)
+                .map(|item| &item.args),
+        )
+    {
+        for field in fields {
+            let ty = match &field.ty {
+                ArgType::Array(element) => element.as_ref(),
+                ty => ty,
+            };
+            if let ArgType::Named(name) = ty {
+                if structs
+                    .iter()
+                    .any(|item| item.name == *name && !item.tagged)
+                {
+                    return err(0, "tagged fields require tagged nested structs");
+                }
+            }
+        }
+    }
 
     Ok(Protocol {
         name,
@@ -347,7 +379,11 @@ fn parse_enum(node: &Node) -> Result<NamedEnum, ParseError> {
     if entries.is_empty() {
         return err(0, format!("enum {name} must contain at least one entry"));
     }
-    Ok(NamedEnum { name, entries })
+    Ok(NamedEnum {
+        name,
+        entries,
+        open: parse_bool_attr(node, "open")?,
+    })
 }
 
 fn set_inbound_kind(slot: &mut Option<InboundKind>, k: InboundKind) -> Result<(), ParseError> {
@@ -414,7 +450,13 @@ fn parse_struct(
     if fields.is_empty() {
         return err(0, format!("struct {name} must contain at least one field"));
     }
-    Ok(NamedStruct { name, fields })
+    let tagged = parse_encoding(node)?;
+    validate_fields(&fields, tagged)?;
+    Ok(NamedStruct {
+        name,
+        fields,
+        tagged,
+    })
 }
 
 fn order_structs(structs: Vec<NamedStruct>) -> Result<Vec<NamedStruct>, ParseError> {
@@ -491,11 +533,17 @@ fn parse_message(
             other => return err(0, format!("unknown message child <{other}>")),
         }
     }
+    let tagged = parse_encoding(node)?;
+    validate_fields(&args, tagged)?;
+    if tagged && !matches!(fds, FdSpec::None) {
+        return err(0, "tagged messages cannot carry fds");
+    }
     Ok(Message {
         name,
         opcode,
         args,
         fds,
+        tagged,
     })
 }
 
@@ -538,7 +586,59 @@ fn parse_typed_field(
             None => return err(0, format!("unknown type {ty_str}")),
         }
     };
-    Ok(Arg { name, ty })
+    let tag = node
+        .attr("tag")
+        .map(|s| {
+            s.parse::<u32>().map_err(|_| ParseError {
+                pos: 0,
+                msg: "field tag must be u32".into(),
+            })
+        })
+        .transpose()?;
+    let optional = parse_bool_attr(node, "optional")?;
+    Ok(Arg {
+        name,
+        ty,
+        tag,
+        optional,
+    })
+}
+
+fn parse_bool_attr(node: &Node, name: &str) -> Result<bool, ParseError> {
+    match node.attr(name) {
+        None | Some("false") => Ok(false),
+        Some("true") => Ok(true),
+        _ => err(0, format!("{name} must be true or false")),
+    }
+}
+
+fn parse_encoding(node: &Node) -> Result<bool, ParseError> {
+    match node.attr("encoding") {
+        None | Some("positional") => Ok(false),
+        Some("tagged") => Ok(true),
+        _ => err(0, "unknown encoding"),
+    }
+}
+
+fn validate_fields(fields: &[Arg], tagged: bool) -> Result<(), ParseError> {
+    if tagged && fields.len() > 256 {
+        return err(0, "at most 256 tagged fields are allowed");
+    }
+    let mut tags = HashSet::new();
+    let mut names = HashSet::new();
+    for field in fields {
+        if !names.insert(&field.name) {
+            return err(0, "duplicate field name");
+        }
+        if tagged {
+            if field.tag.is_none_or(|tag| tag == 0 || !tags.insert(tag)) {
+                return err(0, "tagged fields require unique nonzero tags");
+            }
+        } else if field.tag.is_some() || field.optional {
+            return err(0, "tag and optional require tagged encoding");
+        }
+    }
+    Ok(())
 }
 
 fn parse_fds(node: &Node) -> Result<FdSpec, ParseError> {

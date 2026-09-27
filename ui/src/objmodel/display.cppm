@@ -62,6 +62,10 @@ class Display : public QObject {
     Q_PROPERTY(QVariantMap canvasRect READ canvasRect NOTIFY canvasChanged FINAL)
     Q_PROPERTY(quint32 canvasOverlapCount READ canvasOverlapCount NOTIFY canvasChanged FINAL)
     Q_PROPERTY(bool selectableTarget READ selectableTarget NOTIFY canvasChanged FINAL)
+    Q_PROPERTY(int windowExclusionSupport READ windowExclusionSupport NOTIFY
+                   windowExclusionSupportChanged FINAL)
+    Q_PROPERTY(quint32 unsupportedWindowExclusions READ unsupportedWindowExclusions NOTIFY
+                   windowExclusionSupportChanged FINAL)
 
 public:
     explicit Display(const proto::DisplayInfo& info, QObject* parent = nullptr);
@@ -95,6 +99,8 @@ public:
     auto canvasRect() const -> const QVariantMap& { return m_canvas_rect; }
     auto canvasOverlapCount() const -> quint32 { return m_canvas_overlap_count; }
     auto selectableTarget() const -> bool { return m_selectable_target; }
+    auto windowExclusionSupport() const -> int { return m_window_exclusion_support; }
+    auto unsupportedWindowExclusions() const -> quint32 { return m_unsupported_window_exclusions; }
 
     /// Diff-update from a freshly-received `DisplayInfo`. Only emits
     /// the signals for properties that actually changed.
@@ -113,6 +119,7 @@ public:
     Q_SIGNAL void playlistStatusChanged();
     Q_SIGNAL void runtimeConditionsChanged();
     Q_SIGNAL void canvasChanged();
+    Q_SIGNAL void windowExclusionSupportChanged();
 
 private:
     static auto linksFromPb(const proto::DisplayInfo& info) -> QVariantList;
@@ -147,6 +154,8 @@ private:
     bool         m_selectable_target { true };
     bool         m_manual_paused { false };
     bool         m_effective_paused { false };
+    int          m_window_exclusion_support { 0 };
+    quint32      m_unsupported_window_exclusions { 0 };
 };
 
 class Canvas : public QObject {

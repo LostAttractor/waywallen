@@ -122,10 +122,18 @@ Display::Display(const proto::DisplayInfo& info, QObject* parent)
       m_canvas_overlap_count(info.canvasOverlapCount()),
       m_selectable_target(info.selectableTarget()),
       m_manual_paused(info.manualPaused()),
-      m_effective_paused(info.effectivePaused()) {}
+      m_effective_paused(info.effectivePaused()),
+      m_window_exclusion_support(static_cast<int>(info.windowExclusionSupport())),
+      m_unsupported_window_exclusions(info.unsupportedWindowExclusions()) {}
 
 void Display::updateFrom(const proto::DisplayInfo& info) {
     rstd_assert(info.displayId() == m_id, "Display::updateFrom id mismatch");
+    if (m_window_exclusion_support != static_cast<int>(info.windowExclusionSupport()) ||
+        m_unsupported_window_exclusions != info.unsupportedWindowExclusions()) {
+        m_window_exclusion_support      = static_cast<int>(info.windowExclusionSupport());
+        m_unsupported_window_exclusions = info.unsupportedWindowExclusions();
+        Q_EMIT windowExclusionSupportChanged();
+    }
     if (m_manual_paused != info.manualPaused() || m_effective_paused != info.effectivePaused()) {
         m_manual_paused    = info.manualPaused();
         m_effective_paused = info.effectivePaused();

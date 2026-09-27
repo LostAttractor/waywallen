@@ -1,6 +1,7 @@
 pub mod codegen_c;
 pub mod codegen_rust;
 pub mod parser;
+mod tagged;
 
 /// Convenience: parse an XML source and emit the Rust codegen output
 /// in one call.

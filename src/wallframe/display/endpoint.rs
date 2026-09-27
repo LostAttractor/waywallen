@@ -333,7 +333,25 @@ async fn handshake_steps(
     .context("welcome join")?
     .map_err(|e| Error::Internal(anyhow!("send welcome: {e}")))?;
 
-    let (reg, _fds) = recv_handshake_frame(stream, "registration", shutdown_rx).await?;
+    let (mut reg, _fds) = recv_handshake_frame(stream, "registration", shutdown_rx).await?;
+    let mut window_observation_caps = None;
+    let mut pause_effect_caps = None;
+    let mut transition_caps = None;
+    if let Request::ClientCapabilities {
+        window_observation,
+        pause_effect,
+        transition,
+    } = reg
+    {
+        window_observation_caps = window_observation.map(|caps| caps.flags & 15);
+        pause_effect_caps = pause_effect
+            .map(|caps| caps.flags & crate::wallframe::routing::PAUSE_EFFECT_CAPS_KNOWN);
+        transition_caps =
+            transition.map(|caps| caps.flags & crate::wallframe::routing::TRANSITION_CAPS_KNOWN);
+        reg = recv_handshake_frame(stream, "registration", shutdown_rx)
+            .await?
+            .0;
+    }
     let Request::RegisterDisplay {
         name,
         instance_id,
@@ -368,7 +386,7 @@ async fn handshake_steps(
             format!("register_display has unknown window flags 0x{window_state_flags:x}"),
         ));
     }
-    if presentation_caps.flags & !crate::wallframe::routing::PRESENTATION_CAPS_KNOWN != 0 {
+    if presentation_caps.flags & !15 != 0 {
         return Err(reject(
             wire::DisplayErrorCode::ProtocolViolation,
             format!(
@@ -414,6 +432,7 @@ async fn handshake_steps(
         drm.minor,
     );
     Ok(DisplayRegistration {
+        window_observation_caps,
         name,
         instance_id,
         metrics: DisplayMetrics {
@@ -421,7 +440,8 @@ async fn handshake_steps(
             height: metrics.height,
             refresh_mhz: metrics.refresh_mhz,
         },
-        presentation_caps: presentation_caps.flags,
+        pause_effect_caps: pause_effect_caps.unwrap_or(presentation_caps.flags & 1),
+        transition_caps: transition_caps.unwrap_or((presentation_caps.flags >> 1) & 7),
         consumer_caps,
         window_state_flags,
     })
@@ -500,6 +520,18 @@ async fn run_frame_loop(
                         break Err(e);
                     }
                 }
+                Some(DisplayOutEvent::SetWindowObservationConfig(config)) => {
+                    let event = Event::SetWindowObservationConfig { config: wire::WindowObservationConfig {
+                        generation: config.generation,
+                        excluded_application_ids: config.exclusions.application_ids,
+                        excluded_titles: config.exclusions.titles,
+                        excluded_application_id_patterns: (!config.exclusions.application_id_patterns.is_empty()).then_some(config.exclusions.application_id_patterns),
+                        excluded_title_patterns: (!config.exclusions.title_patterns.is_empty()).then_some(config.exclusions.title_patterns),
+                    } };
+                    if let Err(error) = send_window_observation_config(&stream, event).await {
+                        break Err(error);
+                    }
+                }
                 Some(DisplayOutEvent::SetCompositionConfig(cfg)) => {
                     latest_config = Some(cfg.clone());
                     if let Err(e) = send_composition_config(&stream, &cfg).await {
@@ -567,6 +599,15 @@ async fn run_frame_loop(
                         metrics.height,
                         metrics.refresh_mhz,
                     );
+                }
+                Some(Ok(Request::SetWindowObservationState { config_generation, flags })) => {
+                    let result = if flags & !crate::wallframe::routing::auto_replay::FLAGS_KNOWN != 0 {
+                        Err("unknown window state flags")
+                    } else { router.update_window_observation(display_id, config_generation, flags).await };
+                    if let Err(message) = result {
+                        let _ = send_error(&stream, wire::DisplayErrorCode::ProtocolViolation, message.into()).await;
+                        break Err(Error::Internal(anyhow!(message)));
+                    }
                 }
                 Some(Ok(Request::SetWindowState { flags })) => {
                     if flags & !crate::wallframe::routing::auto_replay::FLAGS_KNOWN != 0 {
@@ -961,6 +1002,15 @@ async fn send_error(
     Ok(())
 }
 
+async fn send_window_observation_config(stream: &StdUnixStream, event: Event) -> Result<()> {
+    let stream = stream.try_clone().context("clone for observation config")?;
+    tokio::task::spawn_blocking(move || codec::send_event(&stream, &event, &[]))
+        .await
+        .context("observation config join")?
+        .map_err(|error| Error::Internal(anyhow!("send window observation config: {error}")))?;
+    Ok(())
+}
+
 async fn send_presentation_snapshot(
     stream: &StdUnixStream,
     presentation: PresentationSnapshot,
@@ -1211,6 +1261,99 @@ struct ForwardedFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn capabilities_handshake_accepts_legacy_and_independent_proposals() {
+        for (pause_effect, transition, legacy, expected) in [
+            (None, None, 15, (1, 7)),
+            (Some(0), None, 15, (0, 7)),
+            (None, Some(0), 15, (1, 0)),
+            (Some(0), Some(0), 15, (0, 0)),
+            (Some(1), Some(6), 0, (1, 6)),
+            (Some(1 << 31), Some(1 << 31), 15, (0, 0)),
+            (Some(u32::MAX), Some(u32::MAX), 0, (1, 7)),
+        ] {
+            for caps in [
+                None,
+                Some(None),
+                Some(Some(wire::WindowObservationCapabilities { flags: 3 })),
+                Some(Some(wire::WindowObservationCapabilities { flags: 15 })),
+            ] {
+                let (server, client) = StdUnixStream::pair().unwrap();
+                let expected_caps = caps.as_ref().and_then(|c| c.as_ref()).map(|c| c.flags);
+                let client = std::thread::spawn(move || {
+                    codec::send_request(
+                        &client,
+                        &Request::Hello {
+                            client_name: "test".into(),
+                            client_version: "test".into(),
+                            protocol_version: PROTOCOL_VERSION,
+                        },
+                        &[],
+                    )
+                    .unwrap();
+                    assert!(matches!(
+                        codec::recv_event(&client).unwrap().0,
+                        Event::Welcome { .. }
+                    ));
+                    if caps.is_some() || pause_effect.is_some() || transition.is_some() {
+                        codec::send_request(
+                            &client,
+                            &Request::ClientCapabilities {
+                                window_observation: caps.flatten(),
+                                pause_effect: pause_effect
+                                    .map(|flags| wire::PauseEffectCapabilities { flags }),
+                                transition: transition
+                                    .map(|flags| wire::TransitionCapabilities { flags }),
+                            },
+                            &[],
+                        )
+                        .unwrap();
+                    }
+                    codec::send_request(
+                        &client,
+                        &Request::RegisterDisplay {
+                            name: "DP-1".into(),
+                            instance_id: String::new(),
+                            metrics: wire::DisplayMetrics {
+                                width: 1920,
+                                height: 1080,
+                                refresh_mhz: 60000,
+                            },
+                            consumer_caps: wire::ConsumerCapabilities {
+                                fourccs: vec![0x34325258],
+                                mod_counts: vec![1],
+                                modifiers: vec![0],
+                                plane_counts: vec![1],
+                                device_uuid: vec![0; 4],
+                                driver_uuid: vec![0; 4],
+                                drm_render_major: 226,
+                                drm_render_minor: 128,
+                                mem_hints: 1,
+                                sync_caps: 1,
+                                color_caps: 1,
+                                extent_max_w: 7680,
+                                extent_max_h: 4320,
+                            },
+                            presentation_caps: wire::PresentationCapabilities { flags: legacy },
+                            window_state_flags: 8,
+                        },
+                        &[],
+                    )
+                    .unwrap();
+                });
+                let (events, _) = tokio::sync::broadcast::channel(4);
+                let (_shutdown_tx, mut shutdown) = tokio::sync::watch::channel(false);
+                let registration = do_handshake(&server, &events, &mut shutdown).await.unwrap();
+                assert_eq!(registration.window_observation_caps, expected_caps);
+                assert_eq!(
+                    (registration.pause_effect_caps, registration.transition_caps),
+                    expected
+                );
+                client.join().unwrap();
+            }
+        }
+    }
 
     #[tokio::test]
     async fn malformed_hello_publishes_connection_failure() {

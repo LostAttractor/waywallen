@@ -950,30 +950,13 @@ Item {
                     value: m_prop_delegate.optionIndex(m_prop_delegate.currentValue)
                 }
 
-                MD.TextField {
+                W.ApplyTextField {
                     id: m_text_input
                     visible: m_prop_delegate.type === "textinput"
                     Layout.fillWidth: true
                     text: m_prop_delegate.currentValue
-                    mdState.size: MD.Enum.S
-                    onAccepted: submit()
-
-                    function submit() {
-                        if (text === m_prop_delegate.currentValue)
-                            return;
-                        propertyModel.setValue(m_prop_delegate.key, text);
-                    }
-
-                    trailing: MD.SmallIconButton {
-                        anchors.right: parent?.right
-                        anchors.verticalCenter: parent?.verticalCenter
-                        anchors.rightMargin: 8
-                        icon.name: MD.Token.icon.check
-                        enabled: m_text_input.text !== m_prop_delegate.currentValue
-                        onClicked: m_text_input.submit()
-                        MD.ToolTip.visible: hovered
-                        MD.ToolTip.text: qsTr("Apply")
-                    }
+                    canApply: text !== m_prop_delegate.currentValue
+                    onApplied: value => propertyModel.setValue(m_prop_delegate.key, value)
                 }
 
                 MD.Text {

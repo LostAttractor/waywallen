@@ -243,6 +243,20 @@ fn emit_named_types(out: &mut String, enums: &[NamedEnum], structs: &[NamedStruc
     writeln!(out).unwrap();
     for item in enums {
         let type_name = named_c_type(&item.name);
+        if item.open {
+            writeln!(out, "typedef uint32_t {type_name};").unwrap();
+            for entry in &item.entries {
+                writeln!(
+                    out,
+                    "#define WAYWALLEN_{}_{} UINT32_C({})",
+                    item.name.to_uppercase(),
+                    entry.name.to_uppercase(),
+                    entry.value
+                )
+                .unwrap();
+            }
+            continue;
+        }
         writeln!(out, "typedef enum {} {{", type_name.trim_end_matches("_t")).unwrap();
         for entry in &item.entries {
             writeln!(
@@ -266,6 +280,9 @@ fn emit_named_types(out: &mut String, enums: &[NamedEnum], structs: &[NamedStruc
         )
         .unwrap();
         for field in &item.fields {
+            if field.optional {
+                writeln!(out, "    bool has_{};", c_field_name(&field.name)).unwrap();
+            }
             writeln!(
                 out,
                 "    {} {};",
@@ -321,6 +338,9 @@ fn emit_message_struct(out: &mut String, m: &Message, kind: MsgKind) {
         writeln!(out, "    int _empty; /* C forbids empty structs */").unwrap();
     } else {
         for a in &m.args {
+            if a.optional {
+                writeln!(out, "    bool has_{};", c_field_name(&a.name)).unwrap();
+            }
             let ty = c_type(&a.ty);
             let field = c_field_name(&a.name);
             // Pointer types render `char *name;` (star glued to name);
@@ -834,6 +854,9 @@ static void free_kv_list(ww_kv_list_t *a) {
 "#,
     );
 
+    if p.structs.iter().any(|s| s.tagged) || p.requests.iter().chain(&p.events).any(|m| m.tagged) {
+        out.push_str(include_str!("tagged_c.inc"));
+    }
     emit_named_enum_helpers(&mut out, &p.enums);
     emit_named_helpers(&mut out, &p.structs);
 
@@ -870,6 +893,10 @@ fn emit_named_enum_helpers(out: &mut String, enums: &[NamedEnum]) {
         writeln!(out, "    uint32_t value;").unwrap();
         writeln!(out, "    int rc = rd_u32(r, &value);").unwrap();
         writeln!(out, "    if (rc) return rc;").unwrap();
+        if item.open {
+            writeln!(out, "    *out = value; return WW_OK;\n}}\n").unwrap();
+            continue;
+        }
         writeln!(out, "    switch (value) {{").unwrap();
         for entry in &item.entries {
             writeln!(
@@ -898,24 +925,28 @@ fn emit_named_helpers(out: &mut String, structs: &[NamedStruct]) {
         )
         .unwrap();
         writeln!(out, "    int rc;").unwrap();
-        for field in &item.fields {
-            let name = c_field_name(&field.name);
-            let call = encode_call_for(&field.ty, &name);
-            let arg = match field.ty {
-                ArgType::Bool
-                | ArgType::U32
-                | ArgType::I32
-                | ArgType::U64
-                | ArgType::I64
-                | ArgType::F32
-                | ArgType::F64
-                | ArgType::Enum(_) => format!("v->{name}"),
-                ArgType::String => format!("v->{name}"),
-                ArgType::Rect | ArgType::KvList | ArgType::Array(_) | ArgType::Named(_) => {
-                    format!("&v->{name}")
-                }
-            };
-            writeln!(out, "    if ((rc = {call}(b, {arg}))) return rc;").unwrap();
+        if item.tagged {
+            crate::tagged::c_encode(out, &item.fields, "v", "b");
+        } else {
+            for field in &item.fields {
+                let name = c_field_name(&field.name);
+                let call = encode_call_for(&field.ty, &name);
+                let arg = match field.ty {
+                    ArgType::Bool
+                    | ArgType::U32
+                    | ArgType::I32
+                    | ArgType::U64
+                    | ArgType::I64
+                    | ArgType::F32
+                    | ArgType::F64
+                    | ArgType::Enum(_) => format!("v->{name}"),
+                    ArgType::String => format!("v->{name}"),
+                    ArgType::Rect | ArgType::KvList | ArgType::Array(_) | ArgType::Named(_) => {
+                        format!("&v->{name}")
+                    }
+                };
+                writeln!(out, "    if ((rc = {call}(b, {arg}))) return rc;").unwrap();
+            }
         }
         writeln!(out, "    return WW_OK;").unwrap();
         writeln!(out, "}}").unwrap();
@@ -928,10 +959,14 @@ fn emit_named_helpers(out: &mut String, structs: &[NamedStruct]) {
         )
         .unwrap();
         writeln!(out, "    int rc;").unwrap();
-        for field in &item.fields {
-            let name = c_field_name(&field.name);
-            let call = decode_call_for(&field.ty);
-            writeln!(out, "    if ((rc = {call}(r, &v->{name}))) return rc;").unwrap();
+        if item.tagged {
+            crate::tagged::c_decode(out, &item.fields, "v", "r");
+        } else {
+            for field in &item.fields {
+                let name = c_field_name(&field.name);
+                let call = decode_call_for(&field.ty);
+                writeln!(out, "    if ((rc = {call}(r, &v->{name}))) return rc;").unwrap();
+            }
         }
         writeln!(out, "    return WW_OK;").unwrap();
         writeln!(out, "}}").unwrap();
@@ -966,6 +1001,11 @@ fn emit_named_helpers(out: &mut String, structs: &[NamedStruct]) {
 fn emit_message_impl(out: &mut String, m: &Message, kind: MsgKind) {
     let type_name = message_type_name(m, kind);
     let fn_prefix = type_name.trim_end_matches("_t").to_string();
+    if m.tagged {
+        writeln!(out, "static int {fn_prefix}_read(ww_rd_t *reader, {type_name} *value) {{\n    int rc;\n    (void)value;").unwrap();
+        crate::tagged::c_decode(out, &m.args, "value", "reader");
+        writeln!(out, "    return WW_OK;\n}}\n").unwrap();
+    }
 
     // ---- encode ----
     writeln!(
@@ -973,21 +1013,25 @@ fn emit_message_impl(out: &mut String, m: &Message, kind: MsgKind) {
         "int {fn_prefix}_encode(const {type_name} *m, ww_buf_t *out) {{"
     )
     .unwrap();
-    if m.args.is_empty() {
+    if m.args.is_empty() && !m.tagged {
         writeln!(out, "    (void)m; (void)out;").unwrap();
         writeln!(out, "    return WW_OK;").unwrap();
     } else {
         writeln!(out, "    int rc;").unwrap();
         writeln!(out, "    (void)m;").unwrap();
-        for a in &m.args {
-            let field = c_field_name(&a.name);
-            let call = encode_call_for(&a.ty, &field);
-            writeln!(
-                out,
-                "    if ((rc = {call}(out, {arg}))) return rc;",
-                arg = encode_arg_expr(&a.ty, &field)
-            )
-            .unwrap();
+        if m.tagged {
+            crate::tagged::c_encode(out, &m.args, "m", "out");
+        } else {
+            for a in &m.args {
+                let field = c_field_name(&a.name);
+                let call = encode_call_for(&a.ty, &field);
+                writeln!(
+                    out,
+                    "    if ((rc = {call}(out, {arg}))) return rc;",
+                    arg = encode_arg_expr(&a.ty, &field)
+                )
+                .unwrap();
+            }
         }
         writeln!(out, "    return WW_OK;").unwrap();
     }
@@ -1002,18 +1046,22 @@ fn emit_message_impl(out: &mut String, m: &Message, kind: MsgKind) {
     .unwrap();
     writeln!(out, "    memset(out, 0, sizeof(*out));").unwrap();
     writeln!(out, "    ww_rd_t r = {{ buf, 0, len }};").unwrap();
-    if m.args.is_empty() {
+    if m.args.is_empty() && !m.tagged {
         writeln!(out, "    (void)r;").unwrap();
     } else {
         writeln!(out, "    int rc;").unwrap();
-        for a in &m.args {
-            let field = c_field_name(&a.name);
-            let call = decode_call_for(&a.ty);
-            writeln!(out, "    if ((rc = {call}(&r, &out->{field}))) goto fail;").unwrap();
+        if m.tagged {
+            writeln!(out, "    if ((rc = {fn_prefix}_read(&r, out))) goto fail;").unwrap();
+        } else {
+            for a in &m.args {
+                let field = c_field_name(&a.name);
+                let call = decode_call_for(&a.ty);
+                writeln!(out, "    if ((rc = {call}(&r, &out->{field}))) goto fail;").unwrap();
+            }
         }
     }
     writeln!(out, "    if (r.pos != r.len) {{").unwrap();
-    if !m.args.is_empty() {
+    if !m.args.is_empty() || m.tagged {
         writeln!(out, "        int rc2 = WW_ERR_TRAILING;").unwrap();
         writeln!(out, "        (void)rc2;").unwrap();
         writeln!(out, "        {fn_prefix}_free(out);").unwrap();
@@ -1027,7 +1075,7 @@ fn emit_message_impl(out: &mut String, m: &Message, kind: MsgKind) {
     writeln!(out, "        return WW_ERR_TRAILING;").unwrap();
     writeln!(out, "    }}").unwrap();
     writeln!(out, "    return WW_OK;").unwrap();
-    if !m.args.is_empty() {
+    if !m.args.is_empty() || m.tagged {
         writeln!(out, "fail:").unwrap();
         writeln!(out, "    {fn_prefix}_free(out);").unwrap();
         writeln!(out, "    return rc;").unwrap();
@@ -1084,7 +1132,7 @@ fn emit_message_impl(out: &mut String, m: &Message, kind: MsgKind) {
     writeln!(out).unwrap();
 }
 
-fn encode_call_for(ty: &ArgType, _field: &str) -> String {
+pub(crate) fn encode_call_for(ty: &ArgType, _field: &str) -> String {
     match ty {
         ArgType::Bool => "w_bool".into(),
         ArgType::U32 => "w_u32".into(),
@@ -1130,7 +1178,7 @@ fn encode_arg_expr(ty: &ArgType, field: &str) -> String {
     }
 }
 
-fn decode_call_for(ty: &ArgType) -> String {
+pub(crate) fn decode_call_for(ty: &ArgType) -> String {
     match ty {
         ArgType::Bool => "rd_bool".into(),
         ArgType::U32 => "rd_u32".into(),
@@ -1223,7 +1271,7 @@ fn named_c_type(name: &str) -> String {
 
 /// C reserved identifiers that could collide with protocol arg names.
 /// Prefix with `m_` to disambiguate.
-fn c_field_name(raw: &str) -> String {
+pub(crate) fn c_field_name(raw: &str) -> String {
     match raw {
         "default" | "auto" | "register" | "restrict" | "return" | "static" | "struct" | "union"
         | "class" | "new" | "delete" => format!("m_{raw}"),

@@ -36,6 +36,58 @@ mod tests {
     }
 
     #[test]
+    fn window_observation_patterns_fit_frame_and_optional_fields() {
+        let values: Vec<String> = (0..32)
+            .map(|i| format!("{i:03}{}", "x".repeat(253)))
+            .collect();
+        let evt = Event::SetWindowObservationConfig {
+            config: generated::WindowObservationConfig {
+                generation: 1,
+                excluded_application_ids: values.clone(),
+                excluded_titles: values.clone(),
+                excluded_application_id_patterns: Some(values.clone()),
+                excluded_title_patterns: Some(values),
+            },
+        };
+        let mut body = Vec::new();
+        evt.encode(&mut body);
+        assert!(body.len() < 65520);
+        roundtrip_evt(evt);
+
+        let legacy = Event::SetWindowObservationConfig {
+            config: generated::WindowObservationConfig {
+                generation: 1,
+                excluded_application_ids: vec!["cat*".into()],
+                excluded_titles: Vec::new(),
+                excluded_application_id_patterns: None,
+                excluded_title_patterns: None,
+            },
+        };
+        roundtrip_evt(legacy);
+    }
+
+    #[test]
+    fn independent_capabilities_roundtrip() {
+        for pause_effect in [
+            None,
+            Some(generated::PauseEffectCapabilities { flags: 0 }),
+            Some(generated::PauseEffectCapabilities { flags: 1 }),
+        ] {
+            for transition in [
+                None,
+                Some(generated::TransitionCapabilities { flags: 0 }),
+                Some(generated::TransitionCapabilities { flags: 7 }),
+            ] {
+                roundtrip_req(Request::ClientCapabilities {
+                    window_observation: None,
+                    pause_effect: pause_effect.clone(),
+                    transition,
+                });
+            }
+        }
+    }
+
+    #[test]
     fn request_register_roundtrip() {
         roundtrip_req(Request::RegisterDisplay {
             name: "DP-1".to_string(),

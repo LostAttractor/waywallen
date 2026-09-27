@@ -42,18 +42,22 @@ auto map_to_layout(const QVariantMap& m) -> proto::LayoutPrefs {
 
 auto auto_replay_to_map(const proto::AutoReplayPolicy& p) -> QVariantMap {
     QVariantMap m;
-    m[u"anyWindow"_s]       = static_cast<int>(p.anyWindow());
-    m[u"focused"_s]         = static_cast<int>(p.focused());
-    m[u"maximized"_s]       = static_cast<int>(p.maximized());
-    m[u"fullscreen"_s]      = static_cast<int>(p.fullscreen());
-    m[u"sessionLocked"_s]   = static_cast<int>(p.sessionLocked());
-    m[u"sessionInactive"_s] = static_cast<int>(p.sessionInactive());
-    m[u"gamemode"_s]        = static_cast<int>(p.gamemode());
-    m[u"resumeDelayMs"_s]   = p.hasResumeDelayMs() ? p.resumeDelayMs() : 250;
-    m[u"anyWindowScope"_s]  = static_cast<int>(p.anyWindowScope());
-    m[u"focusedScope"_s]    = static_cast<int>(p.focusedScope());
-    m[u"maximizedScope"_s]  = static_cast<int>(p.maximizedScope());
-    m[u"fullscreenScope"_s] = static_cast<int>(p.fullscreenScope());
+    m[u"anyWindow"_s]                     = static_cast<int>(p.anyWindow());
+    m[u"focused"_s]                       = static_cast<int>(p.focused());
+    m[u"maximized"_s]                     = static_cast<int>(p.maximized());
+    m[u"fullscreen"_s]                    = static_cast<int>(p.fullscreen());
+    m[u"sessionLocked"_s]                 = static_cast<int>(p.sessionLocked());
+    m[u"sessionInactive"_s]               = static_cast<int>(p.sessionInactive());
+    m[u"gamemode"_s]                      = static_cast<int>(p.gamemode());
+    m[u"resumeDelayMs"_s]                 = p.hasResumeDelayMs() ? p.resumeDelayMs() : 250;
+    m[u"anyWindowScope"_s]                = static_cast<int>(p.anyWindowScope());
+    m[u"focusedScope"_s]                  = static_cast<int>(p.focusedScope());
+    m[u"maximizedScope"_s]                = static_cast<int>(p.maximizedScope());
+    m[u"fullscreenScope"_s]               = static_cast<int>(p.fullscreenScope());
+    m[u"excludedApplicationIds"_s]        = p.windowExclusions().applicationIds();
+    m[u"excludedWindowTitles"_s]          = p.windowExclusions().titles();
+    m[u"excludedApplicationIdPatterns"_s] = p.windowExclusions().applicationIdPatterns();
+    m[u"excludedWindowTitlePatterns"_s]   = p.windowExclusions().titlePatterns();
     return m;
 }
 
@@ -71,6 +75,12 @@ auto map_to_auto_replay(const QVariantMap& m) -> proto::AutoReplayPolicy {
     p.setFocusedScope(static_cast<proto::AutoScope>(m.value(u"focusedScope"_s).toInt()));
     p.setMaximizedScope(static_cast<proto::AutoScope>(m.value(u"maximizedScope"_s).toInt()));
     p.setFullscreenScope(static_cast<proto::AutoScope>(m.value(u"fullscreenScope"_s).toInt()));
+    proto::WindowExclusions exclusions;
+    exclusions.setApplicationIds(m.value(u"excludedApplicationIds"_s).toStringList());
+    exclusions.setTitles(m.value(u"excludedWindowTitles"_s).toStringList());
+    exclusions.setApplicationIdPatterns(m.value(u"excludedApplicationIdPatterns"_s).toStringList());
+    exclusions.setTitlePatterns(m.value(u"excludedWindowTitlePatterns"_s).toStringList());
+    p.setWindowExclusions(exclusions);
     return p;
 }
 

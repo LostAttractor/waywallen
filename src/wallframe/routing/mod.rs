@@ -1,6 +1,7 @@
 pub mod auto_replay;
 pub mod router;
 pub mod table;
+pub mod window_observation;
 
 pub use router::{
     ActiveRenderer, ApplyAssignment, ApplyReceipt, AssignmentActivation, AssignmentTarget,
@@ -12,8 +13,7 @@ pub use router::{
     RendererActivity, RendererExitSnapshot, RendererLifecycleState, RendererSnapshot,
     ResolvedConfigMember, ResolvedConfigTarget, Router, RouterEvent, RuntimeCondition,
     RuntimeConditionKind, RuntimeConditionOrigin, WallpaperPresentationInfo,
-    WallpaperPresentationState, WallpaperPresentationTarget, PRESENTATION_CAPS_KNOWN,
-    PRESENTATION_CAP_FADE_TRANSITION, PRESENTATION_CAP_GROW_TRANSITION,
-    PRESENTATION_CAP_PAUSE_BLUR, PRESENTATION_CAP_WIPE_TRANSITION,
+    WallpaperPresentationState, WallpaperPresentationTarget, PAUSE_EFFECT_CAPS_KNOWN,
+    TRANSITION_CAPS_KNOWN,
 };
 pub use table::{Link, LinkId, RoutingTable};
