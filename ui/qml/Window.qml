@@ -268,7 +268,7 @@ MD.ApplicationWindow {
                     }
 
                     footer: Item {
-                        implicitHeight: m_rail_footer.implicitHeight
+                        implicitHeight: m_rail_footer.implicitHeight + m_about.height + m_rail_footer.spacing * m_rail.expansionProgress
 
                         Column {
                             id: m_rail_footer
@@ -328,25 +328,27 @@ MD.ApplicationWindow {
                                     });
                                 }
                             }
+                        }
 
-                            MD.RailItem {
-                                visible: opacity > 0
-                                opacity: m_rail.expansionProgress
-                                width: parent.width
-                                expand: true
-                                checked: false
-                                icon.name: MD.Token.icon.info
-                                text: qsTr("About")
-                                height: implicitHeight * m_rail.expansionProgress
-                                enabled: m_rail.expansionProgress === 1
-                                property var presentation: null
-                                onClicked: {
-                                    if (presentation?.active)
-                                        return;
-                                    presentation = win.presentPopup('waywallen.ui/PagePopup', {
-                                        source: 'waywallen.ui/AboutPage'
-                                    });
-                                }
+                        MD.RailItem {
+                            id: m_about
+                            visible: opacity > 0
+                            opacity: m_rail.expansionProgress
+                            width: parent.width
+                            y: m_rail_footer.height + m_rail_footer.spacing * m_rail.expansionProgress
+                            expand: true
+                            checked: false
+                            icon.name: MD.Token.icon.info
+                            text: qsTr("About")
+                            height: implicitHeight * m_rail.expansionProgress
+                            enabled: m_rail.expansionProgress === 1
+                            property var presentation: null
+                            onClicked: {
+                                if (presentation?.active)
+                                    return;
+                                presentation = win.presentPopup('waywallen.ui/PagePopup', {
+                                    source: 'waywallen.ui/AboutPage'
+                                });
                             }
                         }
                     }
