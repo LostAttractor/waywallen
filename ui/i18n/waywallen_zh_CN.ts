@@ -253,11 +253,6 @@
         <source>Exit</source>
         <translation>退出</translation>
     </message>
-    <message>
-        <location filename="../qml/dialog/DaemonNotRunDialog.qml" line="155"/>
-        <source>Restart</source>
-        <translation>重启</translation>
-    </message>
 </context>
 <context>
     <name>DiscoverPage</name>

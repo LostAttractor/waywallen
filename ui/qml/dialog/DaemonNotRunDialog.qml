@@ -150,13 +150,6 @@ MD.Popup {
                 MD.DialogButtonBox.buttonRole: MD.DialogButtonBox.RejectRole
                 onClicked: Qt.quit()
             }
-            MD.Button {
-                text: qsTr("Restart")
-                mdState.type: MD.Enum.BtText
-                MD.DialogButtonBox.buttonRole: MD.DialogButtonBox.AcceptRole
-                visible: !root.daemonStarting
-                onClicked: W.DaemonDBusClient.launchDaemon()
-            }
         }
     }
 }

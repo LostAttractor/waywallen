@@ -255,11 +255,6 @@
         <source>Exit</source>
         <translation>Выход</translation>
     </message>
-    <message>
-        <location filename="../qml/dialog/DaemonNotRunDialog.qml" line="155"/>
-        <source>Restart</source>
-        <translation>Перезапустить</translation>
-    </message>
 </context>
 <context>
     <name>DiscoverPage</name>
