@@ -13,6 +13,7 @@ pub struct Facts {
     pub flags: u32,
     pub session_locked: bool,
     pub session_inactive: bool,
+    pub screen_off: bool,
     pub gamemode: bool,
     pub on_battery: bool,
 }
@@ -158,6 +159,7 @@ fn condition_matches(condition: AutoCondition, facts: Facts) -> bool {
         AutoCondition::Fullscreen => has(FLAG_FULLSCREEN),
         AutoCondition::SessionLocked => facts.session_locked,
         AutoCondition::SessionInactive => facts.session_inactive,
+        AutoCondition::ScreenOff => facts.screen_off,
         AutoCondition::GameMode => facts.gamemode,
         AutoCondition::OnBattery => facts.on_battery,
     }
@@ -172,6 +174,7 @@ mod tests {
             flags,
             session_locked: false,
             session_inactive: false,
+            screen_off: false,
             gamemode: false,
             on_battery: false,
         }

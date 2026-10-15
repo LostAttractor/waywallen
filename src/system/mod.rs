@@ -4,6 +4,7 @@ use std::path::Path;
 pub mod audio;
 pub mod autostart;
 pub(crate) mod dbus;
+pub(crate) mod display_power;
 pub(crate) mod gamemode;
 mod gpu;
 pub(crate) mod mpris;

@@ -230,6 +230,7 @@ MD.Page {
         { key: "fullscreen",      label: qsTr("Fullscreen window") },
         { key: "sessionLocked",   label: qsTr("Session locked") },
         { key: "sessionInactive", label: qsTr("Session inactive") },
+        { key: "screenOff",       label: qsTr("Screen off") },
         { key: "gamemode",        label: qsTr("GameMode is active") },
         { key: "onBattery",       label: qsTr("On battery") }
     ]
@@ -275,6 +276,7 @@ MD.Page {
             fullscreen: WC.AutoAction.AUTO_ACTION_PAUSE,
             sessionLocked: WC.AutoAction.AUTO_ACTION_STOP,
             sessionInactive: WC.AutoAction.AUTO_ACTION_STOP,
+            screenOff: WC.AutoAction.AUTO_ACTION_PAUSE,
             anyWindowScope: WC.AutoScope.AUTO_SCOPE_CURRENT_DISPLAY,
             focusedScope: WC.AutoScope.AUTO_SCOPE_CURRENT_DISPLAY,
             maximizedScope: WC.AutoScope.AUTO_SCOPE_CURRENT_DISPLAY,
@@ -478,7 +480,7 @@ MD.Page {
     function _updateAutoReplayAction(key, action) {
         root._mutAutoReplay(policy => {
             policy[key] = action;
-            if (key !== "sessionLocked" && key !== "sessionInactive" && key !== "onBattery") {
+            if (key !== "sessionLocked" && key !== "sessionInactive" && key !== "screenOff" && key !== "gamemode" && key !== "onBattery") {
                 policy[key + "Scope"] = action === WC.AutoAction.AUTO_ACTION_MUTE || action === WC.AutoAction.AUTO_ACTION_STOP
                     ? WC.AutoScope.AUTO_SCOPE_ALL_DISPLAYS
                     : WC.AutoScope.AUTO_SCOPE_CURRENT_DISPLAY;
@@ -642,6 +644,7 @@ MD.Page {
                     readonly property bool globalRule:
                         modelData.key === "sessionLocked"
                         || modelData.key === "sessionInactive"
+                        || modelData.key === "screenOff"
                         || modelData.key === "gamemode"
                         || modelData.key === "onBattery"
                     readonly property var actions: root.kAutoActions.filter(o => o.value !== WC.AutoAction.AUTO_ACTION_STOP || (modelData.key !== "anyWindow" && modelData.key !== "focused"))

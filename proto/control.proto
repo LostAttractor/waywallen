@@ -1771,6 +1771,8 @@ message AutoReplayPolicy {
   AutoAction gamemode = 21;
   WindowExclusions window_exclusions = 22;
   AutoAction on_battery = 23;
+  // Absent in older clients: default to pausing while the screen is powered off.
+  optional AutoAction screen_off = 24;
 }
 
 enum PauseEffectKind {

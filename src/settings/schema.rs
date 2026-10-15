@@ -114,18 +114,20 @@ pub enum AutoCondition {
     Fullscreen,
     SessionLocked,
     SessionInactive,
+    ScreenOff,
     GameMode,
     OnBattery,
 }
 
 impl AutoCondition {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::AnyWindow,
         Self::Focused,
         Self::Maximized,
         Self::Fullscreen,
         Self::SessionLocked,
         Self::SessionInactive,
+        Self::ScreenOff,
         Self::GameMode,
         Self::OnBattery,
     ];
@@ -133,7 +135,11 @@ impl AutoCondition {
     pub fn is_global(self) -> bool {
         matches!(
             self,
-            Self::SessionLocked | Self::SessionInactive | Self::GameMode | Self::OnBattery
+            Self::SessionLocked
+                | Self::SessionInactive
+                | Self::ScreenOff
+                | Self::GameMode
+                | Self::OnBattery
         )
     }
 }
@@ -249,6 +255,7 @@ pub struct AutoReplayPolicy {
     pub fullscreen: AutoAction,
     pub session_locked: AutoAction,
     pub session_inactive: AutoAction,
+    pub screen_off: AutoAction,
     pub gamemode: AutoAction,
     pub on_battery: AutoAction,
     pub resume_delay_ms: u32,
@@ -268,6 +275,7 @@ impl Default for AutoReplayPolicy {
             fullscreen: AutoAction::Pause,
             session_locked: AutoAction::Stop,
             session_inactive: AutoAction::Stop,
+            screen_off: AutoAction::Pause,
             gamemode: AutoAction::None,
             on_battery: AutoAction::None,
             resume_delay_ms: DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS,
@@ -333,6 +341,7 @@ impl AutoReplayPolicy {
             AutoCondition::Fullscreen => self.fullscreen,
             AutoCondition::SessionLocked => self.session_locked,
             AutoCondition::SessionInactive => self.session_inactive,
+            AutoCondition::ScreenOff => self.screen_off,
             AutoCondition::GameMode => self.gamemode,
             AutoCondition::OnBattery => self.on_battery,
         }
@@ -346,6 +355,7 @@ impl AutoReplayPolicy {
             AutoCondition::Fullscreen => &mut self.fullscreen,
             AutoCondition::SessionLocked => &mut self.session_locked,
             AutoCondition::SessionInactive => &mut self.session_inactive,
+            AutoCondition::ScreenOff => &mut self.screen_off,
             AutoCondition::GameMode => &mut self.gamemode,
             AutoCondition::OnBattery => &mut self.on_battery,
         };
@@ -1037,6 +1047,7 @@ impl Settings {
                 changed |= policy.migrate();
                 if policy.session_locked != global.session_locked
                     || policy.session_inactive != global.session_inactive
+                    || policy.screen_off != global.screen_off
                     || policy.gamemode != global.gamemode
                     || policy.on_battery != global.on_battery
                 {
@@ -1045,6 +1056,7 @@ impl Settings {
                     );
                     policy.session_locked = global.session_locked;
                     policy.session_inactive = global.session_inactive;
+                    policy.screen_off = global.screen_off;
                     policy.gamemode = global.gamemode;
                     policy.on_battery = global.on_battery;
                     changed = true;
