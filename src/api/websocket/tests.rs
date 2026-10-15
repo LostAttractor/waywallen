@@ -81,6 +81,39 @@ fn library_visibility_presence_and_validation() {
 }
 
 #[test]
+fn screen_off_policy_defaults_for_old_clients_and_round_trips_explicit_actions() {
+    use crate::settings::{AutoAction, AutoReplayPolicy};
+    use prost::Message;
+
+    assert_eq!(
+        auto_replay_from_pb(&pb::AutoReplayPolicy::default())
+            .unwrap()
+            .screen_off,
+        AutoAction::Pause
+    );
+    for screen_off in [
+        AutoAction::None,
+        AutoAction::Pause,
+        AutoAction::Stop,
+        AutoAction::Mute,
+    ] {
+        let policy = AutoReplayPolicy {
+            screen_off,
+            on_battery: AutoAction::Mute,
+            ..Default::default()
+        };
+        let encoded = auto_replay_to_pb(&policy).encode_to_vec();
+        let decoded = pb::AutoReplayPolicy::decode(encoded.as_slice()).unwrap();
+        assert_eq!(auto_replay_from_pb(&decoded).unwrap(), policy);
+    }
+    assert!(auto_replay_from_pb(&pb::AutoReplayPolicy {
+        screen_off: Some(99),
+        ..Default::default()
+    })
+    .is_err());
+}
+
+#[test]
 fn auto_replay_scope_roundtrip_and_invalid_writes() {
     for scope in [
         crate::settings::AutoScope::CurrentDisplay,

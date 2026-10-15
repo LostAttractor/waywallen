@@ -827,6 +827,7 @@ pub(super) fn auto_replay_to_pb(p: &crate::settings::AutoReplayPolicy) -> pb::Au
         fullscreen: auto_action_to_pb(p.fullscreen) as i32,
         session_locked: auto_action_to_pb(p.session_locked) as i32,
         session_inactive: auto_action_to_pb(p.session_inactive) as i32,
+        screen_off: Some(auto_action_to_pb(p.screen_off) as i32),
         gamemode: auto_action_to_pb(p.gamemode) as i32,
         on_battery: auto_action_to_pb(p.on_battery) as i32,
         resume_delay_ms: Some(p.effective_resume_delay_ms()),
@@ -859,6 +860,11 @@ pub(super) fn auto_replay_from_pb(
             crate::error::Error::SettingsValidationFailed("unknown auto replay scope".into())
         })?;
     }
+    if let Some(action) = p.screen_off {
+        pb::AutoAction::try_from(action).map_err(|_| {
+            crate::error::Error::SettingsValidationFailed("unknown screen-off action".into())
+        })?;
+    }
     let scope = |v| {
         if v == pb::AutoScope::AllDisplays as i32 {
             crate::settings::AutoScope::AllDisplays
@@ -887,6 +893,10 @@ pub(super) fn auto_replay_from_pb(
         fullscreen: auto_action_from_pb(p.fullscreen),
         session_locked: auto_action_from_pb(p.session_locked),
         session_inactive: auto_action_from_pb(p.session_inactive),
+        screen_off: p
+            .screen_off
+            .map(auto_action_from_pb)
+            .unwrap_or(crate::settings::AutoAction::Pause),
         gamemode: auto_action_from_pb(p.gamemode),
         on_battery: auto_action_from_pb(p.on_battery),
         resume_delay_ms: p

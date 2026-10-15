@@ -629,6 +629,8 @@ struct Inner {
     session_locked: bool,
     /// Set when the current login session is inactive.
     session_inactive: bool,
+    /// Set when the compositor reports that the displays are powered off.
+    screen_off: bool,
     /// Set when GameMode is active.
     gamemode: bool,
     on_battery: bool,
@@ -780,6 +782,7 @@ impl Router {
                 auto_stopped_renderers: HashSet::new(),
                 session_locked: false,
                 session_inactive: false,
+                screen_off: false,
                 gamemode: false,
                 on_battery: false,
                 manual_paused: false,
@@ -7978,6 +7981,46 @@ mod tests {
             .all(|l| !l.active));
         router.update_session_state(Some(false), None).await;
         assert!(!router.inner.lock().await.auto_effects.stop);
+    }
+
+    #[tokio::test]
+    async fn screen_off_pauses_new_displays_and_preserves_other_pause_sources() {
+        let mgr = Arc::new(RendererManager::new_default());
+        let router = Router::new(mgr.clone());
+        router.attach_settings(settings_with_auto_replay(auto_replay(&[])).await);
+
+        // Starting a renderer while the screens are already off must pause it.
+        router.update_screen_off_state(true).await;
+        let (r, _records) = RendererHandle::test_stub_with_frame_records("r1", "scene");
+        r.test_publish_pool(fake_published_pool(1, 1920, 1080));
+        mgr.register_test_handle(r.clone()).await;
+        router.register_renderer(r).await;
+        let display = router.register_display(reg("A", 1920, 1080)).await;
+        assert!(
+            router
+                .snapshot_display(display.id)
+                .await
+                .unwrap()
+                .effective_paused
+        );
+        // The router permits the initial composition frame before freezing.
+        router.on_renderer_frame("r1", 1, 0, 1, 1).await;
+        assert!(router.is_paused("r1").await);
+
+        router.set_manual_pause(true).await;
+        router.update_screen_off_state(false).await;
+        assert!(router.is_paused("r1").await);
+        router.set_manual_pause(false).await;
+        assert!(!router.is_paused("r1").await);
+
+        router.update_screen_off_state(true).await;
+        router
+            .update_display_window_state(display.id, ar::FLAG_FULLSCREEN)
+            .await;
+        router.update_screen_off_state(false).await;
+        assert!(router.is_paused("r1").await);
+        router.update_display_window_state(display.id, 0).await;
+        assert!(!router.is_paused("r1").await);
     }
 
     #[tokio::test]

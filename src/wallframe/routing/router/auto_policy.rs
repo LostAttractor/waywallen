@@ -44,6 +44,11 @@ impl Router {
         self.refresh_auto_policy(false).await;
     }
 
+    pub async fn update_screen_off_state(self: &Arc<Self>, off: bool) {
+        self.inner.lock().await.screen_off = off;
+        self.refresh_auto_policy(false).await;
+    }
+
     pub async fn update_gamemode_state(self: &Arc<Self>, active: bool) {
         self.inner.lock().await.gamemode = active;
         self.refresh_auto_policy(false).await;
@@ -75,6 +80,7 @@ impl Router {
                 flags: 0,
                 session_locked: inner.session_locked,
                 session_inactive: inner.session_inactive,
+                screen_off: inner.screen_off,
                 gamemode: inner.gamemode,
                 on_battery: inner.on_battery,
             };
