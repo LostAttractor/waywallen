@@ -51,6 +51,16 @@ Waywallen is built by [Lito](https://github.com/litocpp/lito) (Please star it)
 | **COSMIC** | [waywallen-display/layer_shell](https://github.com/waywallen/waywallen-display/tree/main/src/bin/layer_shell) | ✅ | ✅ |
 | **Sway** | [waywallen-display/layer_shell](https://github.com/waywallen/waywallen-display/tree/main/src/bin/layer_shell) | ✅ | ❌ |
 
+On GNOME, **Settings → Auto Replay → Screen off** pauses wallpapers by default when
+the compositor puts the displays into standby or turns them off, even if the session
+remains unlocked. Waking the displays releases only this rule; manual pause and other
+active rules still apply. This display-power detection currently supports GNOME.
+Flatpak installations also need permission to read Mutter's display state:
+
+```bash
+flatpak override --user --talk-name=org.gnome.Mutter.DisplayConfig org.waywallen.waywallen
+```
+
 ## Known issue
 - Recent NVIDIA driver has bug with `egl`, please set `QSG_RHI_BACKEND=vulkan` with `plasmashell`, more details at [`waywallen-display`](https://github.com/waywallen/waywallen-display#kde-plasma-extension).  
 - Web wallpapers on NVIDIA GPUs require `shared_texture_enabled` to be disabled in the web renderer settings.

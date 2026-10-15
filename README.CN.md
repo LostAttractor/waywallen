@@ -51,6 +51,14 @@ Waywallen 使用 [Lito](https://github.com/litocpp/lito) 构建（请为它点�
 | **COSMIC** | [waywallen-display/layer_shell](https://github.com/waywallen/waywallen-display/tree/main/src/bin/layer_shell) | ✅ | ✅ |
 | **Sway** | [waywallen-display/layer_shell](https://github.com/waywallen/waywallen-display/tree/main/src/bin/layer_shell) | ✅ | ❌ |
 
+GNOME 下，**设置 → 自动重播 → 屏幕关闭** 默认在显示器待机或关闭时暂停壁纸，
+无需锁屏。亮屏后只解除这一条件，手动暂停和其他仍生效的规则会继续保留。
+目前屏幕电源状态检测支持 GNOME。Flatpak 安装还需要允许读取 Mutter 的显示状态：
+
+```bash
+flatpak override --user --talk-name=org.gnome.Mutter.DisplayConfig org.waywallen.waywallen
+```
+
 ## 已知问题
 
 - NVIDIA GPU 运行网页壁纸时，需要在网页渲染器设置中关闭 `shared_texture_enabled`。

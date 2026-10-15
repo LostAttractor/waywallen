@@ -12,6 +12,7 @@ pub struct Facts {
     pub flags: u32,
     pub session_locked: bool,
     pub session_inactive: bool,
+    pub screen_off: bool,
     pub gamemode: bool,
 }
 
@@ -57,7 +58,7 @@ struct RuleState {
 pub struct State {
     pub last_flags: u32,
     pub stop_applied: bool,
-    rules: [RuleState; 7],
+    rules: [RuleState; AutoCondition::ALL.len()],
     pub resume_token: u64,
 }
 
@@ -139,6 +140,7 @@ fn condition_matches(condition: AutoCondition, facts: Facts) -> bool {
         AutoCondition::Fullscreen => has(FLAG_FULLSCREEN),
         AutoCondition::SessionLocked => facts.session_locked,
         AutoCondition::SessionInactive => facts.session_inactive,
+        AutoCondition::ScreenOff => facts.screen_off,
         AutoCondition::GameMode => facts.gamemode,
     }
 }
@@ -152,6 +154,7 @@ mod tests {
             flags,
             session_locked: false,
             session_inactive: false,
+            screen_off: false,
             gamemode: false,
         }
     }

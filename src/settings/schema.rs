@@ -114,24 +114,26 @@ pub enum AutoCondition {
     Fullscreen,
     SessionLocked,
     SessionInactive,
+    ScreenOff,
     GameMode,
 }
 
 impl AutoCondition {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::AnyWindow,
         Self::Focused,
         Self::Maximized,
         Self::Fullscreen,
         Self::SessionLocked,
         Self::SessionInactive,
+        Self::ScreenOff,
         Self::GameMode,
     ];
 
     pub fn is_global(self) -> bool {
         matches!(
             self,
-            Self::SessionLocked | Self::SessionInactive | Self::GameMode
+            Self::SessionLocked | Self::SessionInactive | Self::ScreenOff | Self::GameMode
         )
     }
 }
@@ -247,6 +249,7 @@ pub struct AutoReplayPolicy {
     pub fullscreen: AutoAction,
     pub session_locked: AutoAction,
     pub session_inactive: AutoAction,
+    pub screen_off: AutoAction,
     pub gamemode: AutoAction,
     pub resume_delay_ms: u32,
 }
@@ -265,6 +268,7 @@ impl Default for AutoReplayPolicy {
             fullscreen: AutoAction::Pause,
             session_locked: AutoAction::Stop,
             session_inactive: AutoAction::Stop,
+            screen_off: AutoAction::Pause,
             gamemode: AutoAction::None,
             resume_delay_ms: DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS,
         }
@@ -329,6 +333,7 @@ impl AutoReplayPolicy {
             AutoCondition::Fullscreen => self.fullscreen,
             AutoCondition::SessionLocked => self.session_locked,
             AutoCondition::SessionInactive => self.session_inactive,
+            AutoCondition::ScreenOff => self.screen_off,
             AutoCondition::GameMode => self.gamemode,
         }
     }
@@ -341,6 +346,7 @@ impl AutoReplayPolicy {
             AutoCondition::Fullscreen => &mut self.fullscreen,
             AutoCondition::SessionLocked => &mut self.session_locked,
             AutoCondition::SessionInactive => &mut self.session_inactive,
+            AutoCondition::ScreenOff => &mut self.screen_off,
             AutoCondition::GameMode => &mut self.gamemode,
         };
         *slot = action;
@@ -1016,6 +1022,7 @@ impl Settings {
                 changed |= policy.migrate();
                 if policy.session_locked != global.session_locked
                     || policy.session_inactive != global.session_inactive
+                    || policy.screen_off != global.screen_off
                     || policy.gamemode != global.gamemode
                 {
                     log::warn!(
@@ -1023,6 +1030,7 @@ impl Settings {
                     );
                     policy.session_locked = global.session_locked;
                     policy.session_inactive = global.session_inactive;
+                    policy.screen_off = global.screen_off;
                     policy.gamemode = global.gamemode;
                     changed = true;
                 }

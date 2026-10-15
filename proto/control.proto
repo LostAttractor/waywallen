@@ -1737,6 +1737,8 @@ message AutoReplayPolicy {
   AutoScope fullscreen_scope = 20;
   AutoAction gamemode = 21;
   WindowExclusions window_exclusions = 22;
+  // Absent in older clients: default to pausing while the screen is powered off.
+  optional AutoAction screen_off = 23;
 }
 
 enum PauseEffectKind {

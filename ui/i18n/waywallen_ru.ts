@@ -1741,6 +1741,10 @@ Related display: #%1</source>
         <translation>Сеанс неактивен</translation>
     </message>
     <message>
+        <source>Screen off</source>
+        <translation>Экран выключен</translation>
+    </message>
+    <message>
         <location filename="../qml/page/SettingsPage.qml" line="215"/>
         <source>GameMode is active</source>
         <translation>GameMode активен</translation>
